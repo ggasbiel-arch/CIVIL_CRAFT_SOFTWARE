@@ -27,15 +27,18 @@ pub struct Parameter {
 }
 impl Parameter {
     pub fn validate(&self, key: &str) -> Result<(), String> {
-        if !self.value.is_finite() { return Err(format!("{key}: valor não finito")); }
-        if let Some(min) = self.min {
-            if !min.is_finite() || self.value < min { return Err(format!("{key}: abaixo do mínimo")); }
+        if !self.value.is_finite() {
+            return Err(format!("{key}: valor não finito"));
         }
-        if let Some(max) = self.max {
-            if !max.is_finite() || self.value > max { return Err(format!("{key}: acima do máximo")); }
+        if let Some(min) = self.min
+            && (!min.is_finite() || self.value < min)
+        {
+            return Err(format!("{key}: abaixo do mínimo"));
         }
-        if let (Some(min), Some(max)) = (self.min, self.max) {
-            if min > max { return Err(format!("{key}: intervalo inválido")); }
+        if let Some(max) = self.max
+            && (!max.is_finite() || self.value > max)
+        {
+            return Err(format!("{key}: acima do máximo"));
         }
         Ok(())
     }
@@ -79,40 +82,85 @@ pub struct GraphNode {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum NodeKind {
-    Input { parameter: String },
-    Constant { value: f64 },
-    Add { a: String, b: String },
-    Subtract { a: String, b: String },
-    Multiply { a: String, b: String },
-    Divide { a: String, b: String },
-    Min { a: String, b: String },
-    Max { a: String, b: String },
-    Clamp { value: String, min: String, max: String },
+    Input {
+        parameter: String,
+    },
+    Constant {
+        value: f64,
+    },
+    Add {
+        a: String,
+        b: String,
+    },
+    Subtract {
+        a: String,
+        b: String,
+    },
+    Multiply {
+        a: String,
+        b: String,
+    },
+    Divide {
+        a: String,
+        b: String,
+    },
+    Min {
+        a: String,
+        b: String,
+    },
+    Max {
+        a: String,
+        b: String,
+    },
+    Clamp {
+        value: String,
+        min: String,
+        max: String,
+    },
 }
 
 impl ComponentDefinition {
-    /// Avalia um grafo numérico de modo determinístico, sem execução arbitrária de código.
-    /// No futuro, avaliação dimensional + geração de geometria ficarão no motor Rust.
-    pub fn evaluate(&self, instance: &ComponentInstance) -> Result<BTreeMap<String, f64>, String> {
+    pub(crate) fn validate_instance(&self, instance: &ComponentInstance) -> Result<(), String> {
         if self.id.is_empty() || instance.definition_id != self.id {
             return Err("Definição da instância não corresponde ao componente".into());
         }
-        if instance.transform.iter().any(|x| !x.is_finite()) {
-            return Err("Transformação contém valores inválidos".into());
+        if instance.transform.iter().any(|x| !x.is_finite())
+            || instance.transform[12..] != [0.0, 0.0, 0.0, 1.0]
+        {
+            return Err("Transformação afim inválida".into());
         }
-        let graph = self.graph.as_ref().ok_or("Componente sem grafo paramétrico")?;
-        if graph.nodes.len() > 4096 { return Err("Grafo grande demais".into()); }
-        let mut inputs = BTreeMap::new();
         for (key, parameter) in &self.parameters {
             parameter.validate(key)?;
+        }
+        for (key, value) in &instance.overrides {
+            let parameter = self
+                .parameters
+                .get(key)
+                .ok_or_else(|| format!("Parâmetro desconhecido: {key}"))?;
+            Parameter {
+                value: *value,
+                ..parameter.clone()
+            }
+            .validate(key)?;
+        }
+        Ok(())
+    }
+
+    /// Avalia o grafo numérico sem executar código externo.
+    pub fn evaluate(&self, instance: &ComponentInstance) -> Result<BTreeMap<String, f64>, String> {
+        self.validate_instance(instance)?;
+        let graph = self
+            .graph
+            .as_ref()
+            .ok_or("Componente sem grafo paramétrico")?;
+        if graph.nodes.len() > 4096 {
+            return Err("Grafo grande demais".into());
+        }
+        let mut inputs = BTreeMap::new();
+        for (key, parameter) in &self.parameters {
             inputs.insert(key.as_str(), parameter.value);
         }
         for (key, value) in &instance.overrides {
-            let Some(parameter) = self.parameters.get(key) else {
-                return Err(format!("Parâmetro desconhecido: {key}"));
-            };
-            let candidate = Parameter { value: *value, ..parameter.clone() };
-            candidate.validate(key)?;
             inputs.insert(key.as_str(), *value);
         }
         let mut map = HashMap::new();
@@ -140,36 +188,70 @@ fn eval_node<'a>(
     active: &mut HashSet<&'a str>,
     depth: usize,
 ) -> Result<f64, String> {
-    if let Some(value) = cache.get(id) { return Ok(*value); }
-    if depth > 256 { return Err("Limite de profundidade de grafo atingido".into()); }
-    if !active.insert(id) { return Err(format!("Ciclo detectado em {id}")); }
-    let kind = nodes.get(id).ok_or_else(|| format!("Nó inexistente: {id}"))?;
+    if let Some(value) = cache.get(id) {
+        return Ok(*value);
+    }
+    if depth > 256 {
+        return Err("Limite de profundidade de grafo atingido".into());
+    }
+    if !active.insert(id) {
+        return Err(format!("Ciclo detectado em {id}"));
+    }
+    let kind = nodes
+        .get(id)
+        .ok_or_else(|| format!("Nó inexistente: {id}"))?;
     let mut read = |key: &'a str| eval_node(key, nodes, inputs, cache, active, depth + 1);
     let result = match kind {
-        NodeKind::Input { parameter } => inputs.get(parameter.as_str()).copied()
+        NodeKind::Input { parameter } => inputs
+            .get(parameter.as_str())
+            .copied()
             .ok_or_else(|| format!("Entrada desconhecida: {parameter}")),
         NodeKind::Constant { value } => Ok(*value),
-        NodeKind::Add { a, b } => { let va = read(a)?; Ok(va + read(b)?) },
-        NodeKind::Subtract { a, b } => { let va = read(a)?; Ok(va - read(b)?) },
-        NodeKind::Multiply { a, b } => { let va = read(a)?; Ok(va * read(b)?) },
+        NodeKind::Add { a, b } => {
+            let va = read(a)?;
+            Ok(va + read(b)?)
+        }
+        NodeKind::Subtract { a, b } => {
+            let va = read(a)?;
+            Ok(va - read(b)?)
+        }
+        NodeKind::Multiply { a, b } => {
+            let va = read(a)?;
+            Ok(va * read(b)?)
+        }
         NodeKind::Divide { a, b } => {
             let va = read(a)?;
             let vb = read(b)?;
-            if vb.abs() < 1e-12 { Err("Divisão por zero".into()) } else { Ok(va / vb) }
-        },
-        NodeKind::Min { a, b } => { let va = read(a)?; Ok(va.min(read(b)?)) },
-        NodeKind::Max { a, b } => { let va = read(a)?; Ok(va.max(read(b)?)) },
+            if vb.abs() < 1e-12 {
+                Err("Divisão por zero".into())
+            } else {
+                Ok(va / vb)
+            }
+        }
+        NodeKind::Min { a, b } => {
+            let va = read(a)?;
+            Ok(va.min(read(b)?))
+        }
+        NodeKind::Max { a, b } => {
+            let va = read(a)?;
+            Ok(va.max(read(b)?))
+        }
         NodeKind::Clamp { value, min, max } => {
             let v = read(value)?;
             let lower = read(min)?;
             let upper = read(max)?;
-            if lower > upper { Err("Clamp com intervalo inválido".into()) }
-            else { Ok(v.clamp(lower, upper)) }
+            if lower > upper {
+                Err("Clamp com intervalo inválido".into())
+            } else {
+                Ok(v.clamp(lower, upper))
+            }
         }
     };
     active.remove(id);
     let value = result?;
-    if !value.is_finite() { return Err(format!("Resultado inválido: {id}")); }
+    if !value.is_finite() {
+        return Err(format!("Resultado inválido: {id}"));
+    }
     cache.insert(id, value);
     Ok(value)
 }
@@ -180,21 +262,54 @@ mod tests {
 
     fn component() -> (ComponentDefinition, ComponentInstance) {
         let mut parameters = BTreeMap::new();
-        parameters.insert("width".into(), Parameter { value: 0.90, unit: "m".into(), min: Some(0.60), max: Some(2.0), label: "Largura".into() });
+        parameters.insert(
+            "width".into(),
+            Parameter {
+                value: 0.90,
+                unit: "m".into(),
+                min: Some(0.60),
+                max: Some(2.0),
+                label: "Largura".into(),
+            },
+        );
         let definition = ComponentDefinition {
-            id: "PORTA-01".into(), name: "Porta dinâmica".into(), classification: "IfcDoor".into(),
-            provenance: None, parameters, property_sets: BTreeMap::new(),
+            id: "PORTA-01".into(),
+            name: "Porta dinâmica".into(),
+            classification: "IfcDoor".into(),
+            provenance: None,
+            parameters,
+            property_sets: BTreeMap::new(),
             graph: Some(ParametricGraph {
                 nodes: vec![
-                    GraphNode { id: "entrada".into(), kind: NodeKind::Input { parameter: "width".into() } },
-                    GraphNode { id: "folga".into(), kind: NodeKind::Constant { value: 0.04 } },
-                    GraphNode { id: "folha".into(), kind: NodeKind::Subtract { a: "entrada".into(), b: "folga".into() } },
+                    GraphNode {
+                        id: "entrada".into(),
+                        kind: NodeKind::Input {
+                            parameter: "width".into(),
+                        },
+                    },
+                    GraphNode {
+                        id: "folga".into(),
+                        kind: NodeKind::Constant { value: 0.04 },
+                    },
+                    GraphNode {
+                        id: "folha".into(),
+                        kind: NodeKind::Subtract {
+                            a: "entrada".into(),
+                            b: "folga".into(),
+                        },
+                    },
                 ],
                 outputs: BTreeMap::from([("leaf_width_m".into(), "folha".into())]),
             }),
         };
-        let instance = ComponentInstance { id: "I1".into(), definition_id: definition.id.clone(), overrides: BTreeMap::new(),
-            transform: [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.] };
+        let instance = ComponentInstance {
+            id: "I1".into(),
+            definition_id: definition.id.clone(),
+            overrides: BTreeMap::new(),
+            transform: [
+                1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+            ],
+        };
         (definition, instance)
     }
 
@@ -213,7 +328,10 @@ mod tests {
         instance.overrides.insert("width".into(), 6.0);
         assert!(def.evaluate(&instance).is_err());
         instance.overrides.clear();
-        def.graph.as_mut().unwrap().nodes[1].kind = NodeKind::Add { a: "folha".into(), b: "entrada".into() };
+        def.graph.as_mut().unwrap().nodes[1].kind = NodeKind::Add {
+            a: "folha".into(),
+            b: "entrada".into(),
+        };
         assert!(def.evaluate(&instance).unwrap_err().contains("Ciclo"));
     }
 
