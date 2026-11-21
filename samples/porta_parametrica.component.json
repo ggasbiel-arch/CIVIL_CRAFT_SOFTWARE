@@ -1,0 +1,37 @@
+{
+  "definition": {
+    "id": "DOOR-001",
+    "name": "Porta paramétrica de demonstração",
+    "classification": "IfcDoor",
+    "provenance": {
+      "source_application": "manual",
+      "source_format": "native-prototype",
+      "source_identifier": null,
+      "source_version": "0.2",
+      "original_attributes": {"nota": "Exemplo fictício; não foi importado do Revit"},
+      "conversion_warnings": []
+    },
+    "parameters": {
+      "largura_m": {"value": 0.9, "unit": "m", "min": 0.6, "max": 2.0, "label": "Largura da porta"},
+      "altura_m": {"value": 2.1, "unit": "m", "min": 1.8, "max": 3.0, "label": "Altura da porta"},
+      "folga_m": {"value": 0.04, "unit": "m", "min": 0.0, "max": 0.1, "label": "Folga da folha"}
+    },
+    "property_sets": {"Pset_DoorCommon": {"IsExternal": false, "FireRating": ""}},
+    "graph": {
+      "nodes": [
+        {"id": "n_largura", "op": "input", "parameter": "largura_m"},
+        {"id": "n_folga", "op": "input", "parameter": "folga_m"},
+        {"id": "n_folha", "op": "subtract", "a": "n_largura", "b": "n_folga"},
+        {"id": "n_altura", "op": "input", "parameter": "altura_m"},
+        {"id": "n_area", "op": "multiply", "a": "n_folha", "b": "n_altura"}
+      ],
+      "outputs": {"largura_folha_m": "n_folha", "area_folha_m2": "n_area"}
+    }
+  },
+  "instance": {
+    "id": "DOOR-INSTANCE-001",
+    "definition_id": "DOOR-001",
+    "overrides": {},
+    "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+  }
+}

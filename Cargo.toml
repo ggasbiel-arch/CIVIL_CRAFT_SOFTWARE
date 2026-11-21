@@ -1,0 +1,8 @@
+[workspace]
+members = ["crates/civil_core", "crates/civil_desktop"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+

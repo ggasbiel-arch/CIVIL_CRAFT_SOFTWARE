@@ -1,0 +1,9 @@
+[package]
+name = "civil_desktop"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+civil_core = { path = "../civil_core" }
+eframe = "0.37.0"
+serde_json = "1"
