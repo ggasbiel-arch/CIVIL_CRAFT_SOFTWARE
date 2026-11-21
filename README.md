@@ -41,7 +41,12 @@ Consulte `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md` para detalhes e limitaç�
 cargo run --release -p civil_desktop
 ```
 
-O Cargo baixa dependências da internet na primeira compilação. A janela exibe um modelo de exemplo. Escolha **Parede** e clique duas vezes na planta para indicar início e fim de uma parede. Com **Selecionar**, clique numa parede para selecioná-la ou use a lista à esquerda. Para salvar/abrir, informe o caminho na barra inferior e use os botões superiores.
+O Cargo baixa dependências da internet na primeira compilação. A janela abre a Casa piloto em **Planta**, com a ferramenta **Selecionar** ativa.
+
+- Na barra superior, use **Novo**, **Exemplo**, **Abrir** e **Salvar**. Informe o caminho `.bim.json` no campo ao lado dos comandos de arquivo.
+- Na barra de ferramentas, escolha **Parede** e marque o início e o fim na planta. A altura e a espessura nessa barra são usadas nas próximas paredes.
+- À esquerda, o **Navegador BIM** lista pavimentos e elementos e reúne os quantitativos brutos. À direita, **Propriedades** mostra os dados da seleção e permite alterar a largura da porta.
+- Na área de trabalho, alterne entre **Planta**, **Isometria** e **Lado a lado**. A isometria é uma prévia do modelo. Se você escolher uma ferramenta enquanto estiver só na isometria, a interface volta à planta.
 
 ### Porta paramétrica
 
