@@ -74,6 +74,26 @@ def validate_project(project: dict) -> None:
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0 for v in dims):
             raise ValueError(f"Dimensões de {eid} inválidas")
 
+    definitions = project.get("component_definitions", {})
+    instances = project.get("component_instances", [])
+    if not isinstance(definitions, dict) or not isinstance(instances, list):
+        raise ValueError("Catálogo ou instâncias de componentes inválidos")
+    for key, definition in definitions.items():
+        if not key.strip() or not isinstance(definition, dict) or definition.get("id") != key:
+            raise ValueError("ID de definição inválido")
+    for instance in instances:
+        if not isinstance(instance, dict):
+            raise ValueError("Instância de componente inválida")
+        ident = instance.get("id")
+        if not isinstance(ident, str) or not ident.strip() or ident in ids:
+            raise ValueError("ID de instância inválido ou repetido")
+        definition_id = instance.get("definition_id")
+        level_id = instance.get("level_id")
+        if (not isinstance(definition_id, str) or definition_id not in definitions
+                or not isinstance(level_id, str) or level_id not in level_ids):
+            raise ValueError(f"Referência de componente inválida: {ident}")
+        ids.add(ident)
+
 
 def quantities(project: dict) -> dict:
     output = {"wall_length_m": 0.0, "wall_gross_area_m2": 0.0,
@@ -94,6 +114,7 @@ def quantities(project: dict) -> dict:
 
 def add_wall(project: dict, level_id: str, start: list[float], end: list[float], thickness_m: float, height_m: float) -> str:
     used = {element["id"] for element in project["elements"]}
+    used.update(instance["id"] for instance in project.get("component_instances", []))
     number = 1
     while f"W{number}" in used:
         number += 1
@@ -126,7 +147,8 @@ def main() -> None:
     args = parser.parse_args()
     project = read_project(args.file)
     if args.command == "validate":
-        print(f"OK: {project['name']} | {len(project['elements'])} elementos")
+        count = len(project["elements"]) + len(project.get("component_instances", []))
+        print(f"OK: {project['name']} | {count} elementos")
     elif args.command == "summary":
         print(json.dumps({"name": project["name"], "quantities": quantities(project)}, indent=2, ensure_ascii=False))
     elif args.command == "add-wall":

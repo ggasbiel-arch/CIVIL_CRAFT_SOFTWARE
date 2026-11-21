@@ -1,6 +1,6 @@
 # Projeto 2 — Especificação v0.2: interoperabilidade, BIM, modelagem livre e programação visual
 
-Status: **requisitos aprovados pelo usuário; arquitetura proposta; implementação parcial apenas do esquema de componentes e do avaliador numérico**.
+Status: **requisitos aprovados pelo usuário; arquitetura proposta; implementação parcial do esquema, do avaliador numérico e da porta nativa**.
 
 ## Objetivo funcional
 
@@ -59,7 +59,7 @@ Referências oficiais consultadas em novembro/2026:
 
 ### Motor de nós, primeira prova implementada
 
-O módulo Rust `civil_core::components` e o script Python `python/component_tools.py` demonstram **apenas um grafo numérico** com `input`, `constant`, `add`, `subtract`, `multiply`, `divide`, `min`, `max` e `clamp`. Existe detecção de ciclos, limites numéricos, parâmetros por definição e overrides por instância. Não há interface visual nem alteração de geometria baseada nos nós ainda.
+O módulo Rust `civil_core::components` e o script Python `python/component_tools.py` demonstram **apenas um grafo numérico** com `input`, `constant`, `add`, `subtract`, `multiply`, `divide`, `min`, `max` e `clamp`. Existe detecção de ciclos, limites numéricos, parâmetros por definição e overrides por instância. A porta nativa usa a saída de largura da folha para regenerar seu contorno isométrico. O editor visual de nós e a geração de sólidos seguem planejados.
 
 Exemplo: porta paramétrica em `samples/porta_parametrica.component.json`: largura=0,90m, altura=2,10m, folga=0,04m. O nó de subtração produz largura da folha de 0,86m; mudar largura da instância para 1,20m produz 1,16m. A definição original não é modificada.
 

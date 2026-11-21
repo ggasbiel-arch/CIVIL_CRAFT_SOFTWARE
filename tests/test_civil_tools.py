@@ -21,6 +21,20 @@ class TestAutomation(unittest.TestCase):
         self.assertEqual(wall_id, "W5")
         validate_project(self.project)
 
+    def test_add_wall_preserves_components_and_avoids_id_collision(self):
+        with (ROOT / "samples" / "porta_parametrica.component.json").open(encoding="utf-8") as stream:
+            door = json.load(stream)
+        definition = door["definition"]
+        instance = {**door["instance"], "id": "W5", "level_id": "P0"}
+        self.project["component_definitions"] = {definition["id"]: definition}
+        self.project["component_instances"] = [instance]
+
+        wall_id = add_wall(self.project, "P0", [0, 0], [2, 0], 0.15, 2.8)
+
+        self.assertEqual(wall_id, "W6")
+        self.assertEqual(self.project["component_instances"], [instance])
+        self.assertEqual(self.project["component_definitions"], {definition["id"]: definition})
+
     def test_invalid_wall_is_rejected_without_side_effects(self):
         original = len(self.project["elements"])
         with self.assertRaises(ValueError):

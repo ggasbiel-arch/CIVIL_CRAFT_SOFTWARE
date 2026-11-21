@@ -1,6 +1,6 @@
 # PROJETO 2 — CAD/BIM independente
 
-**Status:** protótipo técnico 0.2, preparado para implementação Codex (pacote de publicação 0.3; etapa E0.2 parcial). Este repositório **não é** o Projeto 1 (plugin SketchUp).
+**Status:** protótipo técnico 0.2, preparado para implementação Codex (pacote de publicação 0.3; etapa E0.2 com porta paramétrica nativa). Este repositório **não é** o Projeto 1 (plugin SketchUp).
 
 ## Objetivo
 
@@ -27,7 +27,7 @@ Consulte `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md` para detalhes e limitaç�
 - **Novo E0.2:** tipos Rust para definições/instâncias BIM e origem de importação, com grafo paramétrico **numérico** e testes Rust; ferramenta auxiliar Python para avaliar parâmetros.
 - Exemplo de porta com definição reutilizável e override por instância (`samples/porta_parametrica.component.json`).
 
-**Não entregue:** importadores reais SKP/RFA/GSM/Eberick, motor CAD B-Rep, editor gráfico por nós, geração geométrica a partir do grafo, integração de componentes à viewport, desenho de lajes na interface, portas/janelas BIM nativas, cortes/elevações, IFC, RVT/PLN, cálculos estruturais, norma ABNT automatizada, LOD, BIM colaborativo e orçamento executivo.
+**Não entregue:** importadores reais SKP/RFA/GSM/Eberick, motor CAD B-Rep, editor gráfico por nós, geração de sólidos a partir do grafo, recorte de paredes por portas, desenho de lajes na interface, janelas BIM nativas, cortes/elevações, IFC, RVT/PLN, cálculos estruturais, norma ABNT automatizada, LOD, BIM colaborativo e orçamento executivo.
 
 ## Pré-requisitos (Windows 64 bits recomendado)
 
@@ -43,7 +43,14 @@ cargo run --release -p civil_desktop
 
 O Cargo baixa dependências da internet na primeira compilação. A janela exibe um modelo de exemplo. Escolha **Parede** e clique duas vezes na planta para indicar início e fim de uma parede. Com **Selecionar**, clique numa parede para selecioná-la ou use a lista à esquerda. Para salvar/abrir, informe o caminho na barra inferior e use os botões superiores.
 
-**Observação:** esta versão inicial não foi compilada no ambiente de criação do pacote, que não dispõe de Rust/Cargo. Execute `cargo test --workspace` no seu PC para verificar integração com suas versões e dependências.
+### Porta paramétrica
+
+1. Escolha **Porta** e clique na planta para posicionar a extremidade inicial no pavimento ativo. A porta é inserida ao longo do eixo X e selecionada automaticamente.
+2. Para voltar à edição, clique na porta com **Selecionar** ou escolha sua instância no **Navegador BIM**.
+3. Informe uma largura de 0,60 a 2,00 m no inspetor e clique em **Aplicar largura**. A planta mostra o vão nominal. A vista isométrica mostra a folha calculada pelo grafo. Com 1,20 m de largura, a folha tem 1,16 m.
+4. Use **Desfazer** e **Refazer** para percorrer as edições da sessão. Salve e reabra o `.bim.json` para recuperar as instâncias e seus parâmetros.
+
+A porta é independente da parede. A representação é simbólica na planta e formada por um contorno na isometria. O histórico existe em memória durante a sessão. Consulte [o ADR da integração](docs/adr/0001-componentes-no-documento.md) para detalhes de persistência e validação.
 
 ## Comandos de automação Python
 

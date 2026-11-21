@@ -16,7 +16,7 @@
 - [x] Definições e instâncias tipadas em Rust, origem de importação e propriedades BIM.
 - [x] Avaliador de grafo numérico em Rust e ferramenta auxiliar Python com testes.
 - [ ] Compilar módulo Rust e validar os testes no Windows.
-- [ ] Vincular objetos de biblioteca ao documento e à viewport (ainda independentes).
+- [x] Vincular definições e instâncias ao documento e representar a porta paramétrica na planta e na isometria.
 - [ ] Integrar SDK SketchUp (adaptador .skp real) e começar IFC (adaptador real).
 
 **Aceite E0.2:** abrir exemplo de porta, alterar valor de instância e obter saídas numéricas atualizadas sem alterar a definição; preservar metadados de origem. **Importação proprietária não está implementada.**
