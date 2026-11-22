@@ -63,7 +63,7 @@ impl Default for StudioApp {
             height_m: 2.80,
             zoom: 29.0,
             snap: true,
-            file_path: "meu_projeto.bim.json".into(),
+            file_path: "meu_projeto.CCW".into(),
             status: "Casa piloto carregada".into(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -193,14 +193,37 @@ impl StudioApp {
     }
 
     fn save_file(&mut self) {
+        let entered = self.file_path.trim();
+        let path = Path::new(entered);
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            self.status = "Informe o nome do arquivo .CCW".into();
+            return;
+        };
+        if path.is_dir() || entered.ends_with(std::path::is_separator) {
+            self.status = "Informe um arquivo, além da pasta".into();
+            return;
+        }
+        let lower = name.to_ascii_lowercase();
+        let explicit = lower.ends_with(".ccw");
+        let destination = if explicit {
+            path.to_owned()
+        } else {
+            let stem = lower
+                .strip_suffix(".bim.json")
+                .map_or(name, |prefix| &name[..prefix.len()]);
+            path.with_file_name(format!("{stem}.CCW"))
+        };
         match self
             .project
             .validate()
             .and_then(|_| serde_json::to_string_pretty(&self.project).map_err(|e| e.to_string()))
             .and_then(|json| {
-                write_project(Path::new(self.file_path.trim()), &json).map_err(|e| e.to_string())
+                write_project(&destination, &json, explicit).map_err(|e| e.to_string())
             }) {
-            Ok(()) => self.status = format!("Projeto salvo: {}", self.file_path),
+            Ok(()) => {
+                self.file_path = destination.to_string_lossy().into_owned();
+                self.status = format!("Projeto salvo: {}", self.file_path);
+            }
             Err(err) => self.status = format!("Erro ao salvar: {err}"),
         }
     }
@@ -535,7 +558,7 @@ impl StudioApp {
     }
 }
 
-fn write_project(path: &Path, json: &str) -> std::io::Result<()> {
+fn write_project(path: &Path, json: &str, replace: bool) -> std::io::Result<()> {
     let directory = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -543,7 +566,11 @@ fn write_project(path: &Path, json: &str) -> std::io::Result<()> {
     let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
     temporary.write_all(json.as_bytes())?;
     temporary.as_file().sync_all()?;
-    temporary.persist(path)?;
+    if replace {
+        temporary.persist(path)?;
+    } else {
+        temporary.persist_noclobber(path)?;
+    }
     Ok(())
 }
 
@@ -574,7 +601,7 @@ impl StudioApp {
                         ui.close();
                     }
                     ui.separator();
-                    ui.label("Arquivo .bim.json");
+                    ui.label("Projeto CIVIL CRAFT (.CCW)");
                     ui.text_edit_singleline(&mut self.file_path);
                     if ui.button("Abrir").clicked() {
                         self.open_file();
@@ -1095,15 +1122,34 @@ mod tests {
     }
 
     #[test]
+    fn legacy_file_saves_as_ccw_without_overwriting_an_existing_copy() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = directory.path().join("casa.BIM.JSON");
+        let ccw = directory.path().join("casa.CCW");
+        let source = include_str!("../../../samples/casa_piloto.bim.json");
+        fs::write(&legacy, source).unwrap();
+        let mut app = StudioApp {
+            file_path: legacy.display().to_string(),
+            ..Default::default()
+        };
+        app.open_file();
+        assert!(app.status.starts_with("Projeto aberto"));
+        fs::write(&ccw, "existente").unwrap();
+        app.save_file();
+        assert_eq!(fs::read_to_string(&ccw).unwrap(), "existente");
+        fs::remove_file(&ccw).unwrap();
+        app.save_file();
+        assert_eq!(Path::new(&app.file_path), ccw);
+        assert_eq!(fs::read_to_string(legacy).unwrap(), source);
+        let saved: Project = serde_json::from_slice(&fs::read(ccw).unwrap()).unwrap();
+        assert_eq!(saved, app.project);
+    }
+
+    #[test]
     fn door_edit_history_and_file_round_trip() {
         let directory = tempfile::tempdir().unwrap();
         let mut app = StudioApp {
-            file_path: directory
-                .path()
-                .join("project.bim.json")
-                .to_str()
-                .unwrap()
-                .into(),
+            file_path: directory.path().join("project").to_str().unwrap().into(),
             ..StudioApp::default()
         };
         app.insert_door([1.0, 2.0]);
@@ -1124,6 +1170,7 @@ mod tests {
         app.redo();
         let expected = app.project.clone();
         app.save_file();
+        assert!(app.file_path.ends_with("project.CCW"));
         // A second save exercises replacement of an existing document.
         app.save_file();
         assert!(app.status.starts_with("Projeto salvo"));

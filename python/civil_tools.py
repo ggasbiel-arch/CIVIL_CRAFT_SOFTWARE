@@ -1,9 +1,9 @@
-"""Projeto 2: automação Python para o formato experimental .bim.json.
+"""Projeto 2: automação Python para o formato .CCW e projetos anteriores .bim.json.
 
 Exemplos:
   python python/civil_tools.py validate samples/casa_piloto.bim.json
   python python/civil_tools.py summary samples/casa_piloto.bim.json
-  python python/civil_tools.py add-wall samples/casa_piloto.bim.json saida.bim.json --start 0 0 --end 3 0
+  python python/civil_tools.py add-wall samples/casa_piloto.bim.json saida.CCW --start 0 0 --end 3 0
 """
 from __future__ import annotations
 
