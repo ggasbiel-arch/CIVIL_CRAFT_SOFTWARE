@@ -44,9 +44,9 @@ cargo run --release -p civil_desktop
 O Cargo baixa dependências da internet na primeira compilação. A janela abre a Casa piloto em **Planta**, com a ferramenta **Selecionar** ativa.
 
 - Na barra superior, use **Novo**, **Exemplo**, **Abrir** e **Salvar**. Informe o caminho `.bim.json` no campo ao lado dos comandos de arquivo.
-- Na barra de ferramentas, escolha **Parede** e marque o início e o fim na planta. A altura e a espessura nessa barra são usadas nas próximas paredes.
-- À esquerda, o **Navegador BIM** lista pavimentos e elementos e reúne os quantitativos brutos. À direita, **Propriedades** mostra os dados da seleção e permite alterar a largura da porta.
-- Na área de trabalho, alterne entre **Planta**, **Isometria** e **Lado a lado**. A isometria é uma prévia do modelo. Se você escolher uma ferramenta enquanto estiver só na isometria, a interface volta à planta.
+- Na paleta **Ferramentas** à esquerda, escolha **Parede** e marque o início e o fim na planta. Em **Propriedades**, o grupo **Próxima parede** define as dimensões para o próximo desenho.
+- O **Navegador BIM** lista pavimentos, elementos e quantitativos brutos. **Propriedades** mostra os dados da seleção e permite alterar a largura da porta. Use os botões da barra de visualização para ocultar ou reabrir cada painel.
+- Na barra de visualização, alterne entre **Planta**, **Isometria** e **Duas vistas** e ajuste o zoom ou o snap. **Duas vistas** distribui a planta e a isometria na horizontal quando há espaço e na vertical quando o centro está estreito. Ao escolher uma ferramenta na isometria, a interface volta à planta.
 
 ### Porta paramétrica
 

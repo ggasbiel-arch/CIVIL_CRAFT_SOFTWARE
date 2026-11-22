@@ -20,6 +20,8 @@ struct StudioApp {
     project: Project,
     tool: Tool,
     view: View,
+    show_navigator: bool,
+    show_inspector: bool,
     pending_start: Option<[f64; 2]>,
     selected_id: Option<String>,
     active_level: String,
@@ -40,6 +42,8 @@ impl Default for StudioApp {
             project: Project::example(),
             tool: Tool::Select,
             view: View::Plan,
+            show_navigator: true,
+            show_inspector: true,
             pending_start: None,
             selected_id: None,
             active_level: "P0".into(),
@@ -432,7 +436,7 @@ impl StudioApp {
             egui::CornerRadius::ZERO,
             Color32::from_rgb(32, 40, 51),
         );
-        let origin = rect.center() + Vec2::new(0.0, 72.0);
+        let origin = rect.center() + Vec2::new(0.0, (rect.height() * 0.12).min(72.0));
         let scale = self.zoom * 0.77;
         let iso = |point: [f64; 3]| -> Pos2 {
             let x = point[0] as f32;
@@ -584,78 +588,115 @@ impl StudioApp {
                 }
             });
         });
-        egui::Panel::top("tools").show(ui, |ui| {
+        egui::Panel::top("view_controls").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
-                for (tool, label) in [
-                    (Tool::Select, "Selecionar"),
-                    (Tool::Wall, "Parede"),
-                    (Tool::Door, "Porta"),
-                ] {
-                    if ui.selectable_value(&mut self.tool, tool, label).clicked() {
-                        self.pending_start = None;
-                        if self.view == View::Isometric {
-                            self.view = View::Plan;
-                        }
-                    }
-                }
+                ui.selectable_value(&mut self.view, View::Plan, "Planta");
+                ui.selectable_value(&mut self.view, View::Isometric, "Isometria");
+                ui.selectable_value(&mut self.view, View::Split, "Duas vistas");
                 ui.separator();
-                if self.tool == Tool::Wall {
-                    ui.label("Espessura (m)");
-                    ui.add(
-                        egui::DragValue::new(&mut self.thickness_m)
-                            .speed(0.01)
-                            .range(0.05..=2.0),
-                    );
-                    ui.label("Altura (m)");
-                    ui.add(
-                        egui::DragValue::new(&mut self.height_m)
-                            .speed(0.1)
-                            .range(0.2..=20.0),
-                    );
-                }
+                ui.add(egui::Slider::new(&mut self.zoom, 12.0..=65.0).text("Zoom"));
                 ui.checkbox(&mut self.snap, "Snap 0,25 m");
-                if ui
-                    .add_enabled(
-                        self.pending_start.is_some(),
-                        egui::Button::new("Cancelar desenho"),
-                    )
-                    .clicked()
-                {
-                    self.pending_start = None;
-                }
+                ui.separator();
+                ui.toggle_value(&mut self.show_navigator, "Navegador BIM");
+                ui.toggle_value(&mut self.show_inspector, "Propriedades");
             });
         });
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.label(&self.status);
         });
-
-        egui::Panel::left("navigator")
-            .resizable(true)
-            .default_size(208.0)
-            .size_range(170.0..=280.0)
+        egui::Panel::left("tool_palette")
+            .exact_size(96.0)
             .show(ui, |ui| {
-                ui.heading("Navegador BIM");
-                ui.label("Projeto");
-                ui.text_edit_singleline(&mut self.project.name);
+                ui.strong("Ferramentas");
                 ui.separator();
-                ui.strong("Pavimentos");
-                for level in &self.project.levels {
+                for (tool, label) in [
+                    (Tool::Select, "Selecionar"),
+                    (Tool::Wall, "Parede"),
+                    (Tool::Door, "Porta"),
+                ] {
                     if ui
-                        .selectable_label(
-                            self.active_level == level.id,
-                            format!("{}  •  {:.2} m", level.name, level.elevation_m),
+                        .add_sized(
+                            [ui.available_width(), 30.0],
+                            egui::Button::selectable(self.tool == tool, label),
                         )
                         .clicked()
                     {
-                        self.active_level = level.id.clone();
+                        self.tool = tool;
                         self.pending_start = None;
+                        if self.view == View::Isometric {
+                            self.view = View::Plan;
+                        }
+                        if tool == Tool::Wall {
+                            self.show_inspector = true;
+                        }
                     }
                 }
-                ui.separator();
-                ui.strong("Elementos");
+                if self.pending_start.is_some() && ui.button("Cancelar").clicked() {
+                    self.pending_start = None;
+                }
+            });
+        if self.show_navigator {
+            self.navigator(ui);
+        }
+        if self.show_inspector {
+            self.inspector(ui);
+        }
+
+        egui::CentralPanel::default().show(ui, |ui| match self.view {
+            View::Plan => self.draw_plan(ui),
+            View::Isometric => self.draw_iso(ui),
+            View::Split => self.split_views(ui),
+        });
+    }
+
+    fn split_views(&mut self, ui: &mut egui::Ui) {
+        let (area, _) = ui.allocate_exact_size(ui.available_size(), Sense::hover());
+        let mut plan = area;
+        let mut iso = area;
+        let gap = 4.0;
+        if area.width() >= 620.0 {
+            plan.max.x = area.center().x - gap;
+            iso.min.x = area.center().x + gap;
+        } else {
+            plan.max.y = area.center().y - gap;
+            iso.min.y = area.center().y + gap;
+        }
+        let mut plan_ui = ui.new_child(egui::UiBuilder::new().id_salt("split_plan").max_rect(plan));
+        plan_ui.set_clip_rect(ui.clip_rect().intersect(plan));
+        self.draw_plan(&mut plan_ui);
+        let mut iso_ui = ui.new_child(egui::UiBuilder::new().id_salt("split_iso").max_rect(iso));
+        iso_ui.set_clip_rect(ui.clip_rect().intersect(iso));
+        self.draw_iso(&mut iso_ui);
+    }
+
+    fn navigator(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::left("navigator")
+            .resizable(true)
+            .default_size(192.0)
+            .size_range(160.0..=240.0)
+            .show(ui, |ui| {
+                ui.heading("Navegador BIM");
                 egui::ScrollArea::vertical()
-                    .max_height(280.0)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        ui.label("Projeto");
+                        ui.text_edit_singleline(&mut self.project.name);
+                        ui.separator();
+                        ui.strong("Pavimentos");
+                        for level in &self.project.levels {
+                            if ui
+                                .selectable_label(
+                                    self.active_level == level.id,
+                                    format!("{}  •  {:.2} m", level.name, level.elevation_m),
+                                )
+                                .clicked()
+                            {
+                                self.active_level = level.id.clone();
+                                self.pending_start = None;
+                            }
+                        }
+                        ui.separator();
+                        ui.strong("Elementos");
                         for element in &self.project.elements {
                             let kind = match element {
                                 Element::Wall(_) => "Parede",
@@ -691,53 +732,56 @@ impl StudioApp {
                                 self.pending_start = None;
                             }
                         }
+                        ui.separator();
+                        ui.collapsing("Quantitativos brutos", |ui| {
+                            let q = self.project.quantities();
+                            ui.label(format!("Paredes: {:.2} m", q.wall_length_m));
+                            ui.label(format!("Área de paredes: {:.2} m²", q.wall_gross_area_m2));
+                            ui.label(format!(
+                                "Volume de paredes: {:.2} m³",
+                                q.wall_gross_volume_m3
+                            ));
+                            ui.label(format!("Área de lajes: {:.2} m²", q.slab_area_m2));
+                            ui.label(format!("Volume de lajes: {:.2} m³", q.slab_volume_m3));
+                        });
                     });
-                ui.separator();
-                ui.collapsing("Quantitativos brutos", |ui| {
-                    let q = self.project.quantities();
-                    ui.label(format!("Paredes: {:.2} m", q.wall_length_m));
-                    ui.label(format!("Área de paredes: {:.2} m²", q.wall_gross_area_m2));
-                    ui.label(format!(
-                        "Volume de paredes: {:.2} m³",
-                        q.wall_gross_volume_m3
-                    ));
-                    ui.label(format!("Área de lajes: {:.2} m²", q.slab_area_m2));
-                    ui.label(format!("Volume de lajes: {:.2} m³", q.slab_volume_m3));
-                });
             });
+    }
 
+    fn inspector(&mut self, ui: &mut egui::Ui) {
         egui::Panel::right("inspector")
             .resizable(true)
-            .default_size(208.0)
-            .size_range(170.0..=280.0)
+            .default_size(192.0)
+            .size_range(160.0..=240.0)
             .show(ui, |ui| {
                 ui.heading("Propriedades");
                 ui.separator();
-                if let Some(id) = self.selected_id.clone() {
-                    self.selection_properties(ui, &id);
-                } else {
-                    ui.label("Selecione um elemento.");
-                }
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if self.tool == Tool::Wall {
+                            ui.strong("Próxima parede");
+                            ui.label("Espessura (m)");
+                            ui.add(
+                                egui::DragValue::new(&mut self.thickness_m)
+                                    .speed(0.01)
+                                    .range(0.05..=2.0),
+                            );
+                            ui.label("Altura (m)");
+                            ui.add(
+                                egui::DragValue::new(&mut self.height_m)
+                                    .speed(0.1)
+                                    .range(0.2..=20.0),
+                            );
+                            ui.separator();
+                        }
+                        if let Some(id) = self.selected_id.clone() {
+                            self.selection_properties(ui, &id);
+                        } else if self.tool != Tool::Wall {
+                            ui.label("Selecione um elemento.");
+                        }
+                    });
             });
-
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(&mut self.view, View::Plan, "Planta");
-                ui.selectable_value(&mut self.view, View::Isometric, "Isometria");
-                ui.selectable_value(&mut self.view, View::Split, "Lado a lado");
-                ui.separator();
-                ui.add(egui::Slider::new(&mut self.zoom, 12.0..=65.0).text("Zoom"));
-            });
-            ui.separator();
-            match self.view {
-                View::Plan => self.draw_plan(ui),
-                View::Isometric => self.draw_iso(ui),
-                View::Split => ui.columns(2, |columns| {
-                    self.draw_plan(&mut columns[0]);
-                    self.draw_iso(&mut columns[1]);
-                }),
-            }
-        });
     }
 
     fn selection_properties(&mut self, ui: &mut egui::Ui, id: &str) {
@@ -848,6 +892,49 @@ mod tests {
             assert_eq!(app.selected_id, selected);
             assert_eq!(app.project, project);
         }
+    }
+
+    #[test]
+    fn split_views_stack_when_docks_leave_less_space() {
+        let context = egui::Context::default();
+        let mut app = StudioApp {
+            view: View::Split,
+            ..StudioApp::default()
+        };
+        let mut render = |show_docks| {
+            app.show_navigator = show_docks;
+            app.show_inspector = show_docks;
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        Pos2::ZERO,
+                        Vec2::new(900.0, 580.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| app.workspace(ui),
+            );
+            output.textures_delta.clear();
+            let background = |color| {
+                output
+                    .shapes
+                    .iter()
+                    .find_map(|entry| match &entry.shape {
+                        Shape::Rect(shape) if shape.fill == color => Some(shape.rect),
+                        _ => None,
+                    })
+                    .expect("fundo da vista")
+            };
+            (
+                background(Color32::from_rgb(25, 32, 42)),
+                background(Color32::from_rgb(32, 40, 51)),
+            )
+        };
+
+        let (plan, iso) = render(true);
+        assert!(plan.bottom() < iso.top());
+        let (plan, iso) = render(false);
+        assert!(plan.right() < iso.left());
     }
 
     #[test]
