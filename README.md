@@ -44,6 +44,7 @@ cargo run --release -p civil_desktop
 O Cargo baixa dependências da internet na primeira compilação. A janela abre a Casa piloto em **Planta**, com a ferramenta **Selecionar** ativa.
 
 - Na barra superior, use **Novo**, **Exemplo**, **Abrir** e **Salvar**. Informe o caminho `.bim.json` no campo ao lado dos comandos de arquivo.
+- A faixa **Modelagem** alterna entre **Paramétrica + visual por nós** e **Livre** no mesmo documento. O primeiro modo reúne as ferramentas de arquitetura e permite consultar as saídas do grafo do componente selecionado. O segundo permite navegar e selecionar. A edição visual dos nós e as ferramentas de geometria livre seguem planejadas.
 - Na paleta **Ferramentas** à esquerda, escolha **Parede** e marque o início e o fim na planta. Em **Propriedades**, o grupo **Próxima parede** define as dimensões para o próximo desenho.
 - O **Navegador BIM** lista pavimentos, elementos e quantitativos brutos. **Propriedades** mostra os dados da seleção e permite alterar a largura da porta. Use os botões da barra de visualização para ocultar ou reabrir cada painel.
 - Na barra de visualização, alterne entre **Planta**, **Isometria** e **Duas vistas** e ajuste o zoom ou o snap. **Duas vistas** distribui a planta e a isometria na horizontal quando há espaço e na vertical quando o centro está estreito. Ao escolher uma ferramenta na isometria, a interface volta à planta.

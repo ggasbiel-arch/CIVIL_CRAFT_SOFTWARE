@@ -16,7 +16,14 @@ enum View {
     Split,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ModelingMode {
+    Parametric,
+    Free,
+}
+
 struct StudioApp {
+    modeling_mode: ModelingMode,
     project: Project,
     tool: Tool,
     view: View,
@@ -39,6 +46,7 @@ struct StudioApp {
 impl Default for StudioApp {
     fn default() -> Self {
         Self {
+            modeling_mode: ModelingMode::Parametric,
             project: Project::example(),
             tool: Tool::Select,
             view: View::Plan,
@@ -588,6 +596,22 @@ impl StudioApp {
                 }
             });
         });
+        egui::Panel::top("modeling_mode").show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.strong("Modelagem");
+                for (mode, label) in [
+                    (ModelingMode::Parametric, "Paramétrica + visual por nós"),
+                    (ModelingMode::Free, "Livre"),
+                ] {
+                    if ui
+                        .selectable_label(self.modeling_mode == mode, label)
+                        .clicked()
+                    {
+                        self.switch_mode(mode);
+                    }
+                }
+            });
+        });
         egui::Panel::top("view_controls").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.selectable_value(&mut self.view, View::Plan, "Planta");
@@ -605,31 +629,22 @@ impl StudioApp {
             ui.label(&self.status);
         });
         egui::Panel::left("tool_palette")
-            .exact_size(96.0)
+            .exact_size(126.0)
             .show(ui, |ui| {
                 ui.strong("Ferramentas");
                 ui.separator();
-                for (tool, label) in [
-                    (Tool::Select, "Selecionar"),
-                    (Tool::Wall, "Parede"),
-                    (Tool::Door, "Porta"),
-                ] {
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 30.0],
-                            egui::Button::selectable(self.tool == tool, label),
-                        )
-                        .clicked()
-                    {
-                        self.tool = tool;
-                        self.pending_start = None;
-                        if self.view == View::Isometric {
-                            self.view = View::Plan;
-                        }
-                        if tool == Tool::Wall {
-                            self.show_inspector = true;
-                        }
-                    }
+                self.palette_tool(ui, Tool::Select, "Selecionar");
+                ui.separator();
+                if self.modeling_mode == ModelingMode::Parametric {
+                    egui::CollapsingHeader::new("Arquitetura")
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            self.palette_tool(ui, Tool::Wall, "Parede");
+                            self.palette_tool(ui, Tool::Door, "Porta");
+                        });
+                } else {
+                    ui.strong("Geometria");
+                    ui.small("Edição de faces e arestas em desenvolvimento.");
                 }
                 if self.pending_start.is_some() && ui.button("Cancelar").clicked() {
                     self.pending_start = None;
@@ -647,6 +662,33 @@ impl StudioApp {
             View::Isometric => self.draw_iso(ui),
             View::Split => self.split_views(ui),
         });
+    }
+
+    fn switch_mode(&mut self, mode: ModelingMode) {
+        if self.modeling_mode != mode {
+            self.modeling_mode = mode;
+            self.tool = Tool::Select;
+            self.pending_start = None;
+        }
+    }
+
+    fn palette_tool(&mut self, ui: &mut egui::Ui, tool: Tool, label: &str) {
+        if ui
+            .add_sized(
+                [ui.available_width(), 30.0],
+                egui::Button::selectable(self.tool == tool, label),
+            )
+            .clicked()
+        {
+            self.tool = tool;
+            self.pending_start = None;
+            if self.view == View::Isometric {
+                self.view = View::Plan;
+            }
+            if tool == Tool::Wall {
+                self.show_inspector = true;
+            }
+        }
     }
 
     fn split_views(&mut self, ui: &mut egui::Ui) {
@@ -814,7 +856,17 @@ impl StudioApp {
             let definition = &self.project.component_definitions[&placed.instance.definition_id];
             ui.strong(format!("{} · {id}", definition.name));
             ui.label(format!("Pavimento: {}", placed.level_id));
-            self.door_inspector(ui, id);
+            if self.modeling_mode == ModelingMode::Parametric {
+                if let Some(graph) = &definition.graph {
+                    ui.collapsing("Grafo do componente", |ui| {
+                        ui.label(format!("{} nós", graph.nodes.len()));
+                        for (output, node) in &graph.outputs {
+                            ui.label(format!("{node} → {output}"));
+                        }
+                    });
+                }
+                self.door_inspector(ui, id);
+            }
         }
         ui.separator();
         if ui.button("Excluir elemento").clicked() {
@@ -935,6 +987,21 @@ mod tests {
         assert!(plan.bottom() < iso.top());
         let (plan, iso) = render(false);
         assert!(plan.right() < iso.left());
+    }
+
+    #[test]
+    fn switching_modes_cancels_pending_wall_and_preserves_document() {
+        let mut app = StudioApp::default();
+        app.insert_door([1.0, 2.0]);
+        let project = app.project.clone();
+        let selection = app.selected_id.clone();
+        app.tool = Tool::Wall;
+        app.pending_start = Some([3.0, 4.0]);
+        app.switch_mode(ModelingMode::Free);
+        assert!(app.tool == Tool::Select && app.pending_start.is_none());
+        app.switch_mode(ModelingMode::Parametric);
+        assert_eq!(app.project, project);
+        assert_eq!(app.selected_id, selection);
     }
 
     #[test]
