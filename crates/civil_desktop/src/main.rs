@@ -557,43 +557,89 @@ fn segment_distance(point: Pos2, a: Pos2, b: Pos2) -> f32 {
 
 impl StudioApp {
     fn workspace(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::top("files").show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.heading("CIVIL CRAFT");
-                ui.separator();
-                if ui.button("Novo").clicked() {
-                    self.replace_project(Project::default());
-                    self.status = "Novo projeto".into();
-                }
-                if ui.button("Exemplo").clicked() {
-                    self.replace_project(Project::example());
-                    self.status = "Projeto demonstrativo carregado".into();
-                }
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.file_path)
-                        .desired_width(225.0)
-                        .hint_text("Caminho do arquivo .bim.json"),
-                )
-                .on_hover_text("Caminho do arquivo para Abrir e Salvar");
-                if ui.button("Abrir").clicked() {
-                    self.open_file();
-                }
-                if ui.button("Salvar").clicked() {
-                    self.save_file();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(!self.undo_stack.is_empty(), egui::Button::new("↶ Desfazer"))
-                    .clicked()
-                {
-                    self.undo();
-                }
-                if ui
-                    .add_enabled(!self.redo_stack.is_empty(), egui::Button::new("↷ Refazer"))
-                    .clicked()
-                {
-                    self.redo();
-                }
+        egui::Panel::top("menus").show(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
+                ui.menu_button("Arquivo", |ui| {
+                    if ui.button("Novo").clicked() {
+                        self.replace_project(Project::default());
+                        self.status = "Novo projeto".into();
+                        ui.close();
+                    }
+                    if ui.button("Abrir exemplo").clicked() {
+                        self.replace_project(Project::example());
+                        self.status = "Projeto demonstrativo carregado".into();
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.label("Arquivo .bim.json");
+                    ui.text_edit_singleline(&mut self.file_path);
+                    if ui.button("Abrir").clicked() {
+                        self.open_file();
+                        ui.close();
+                    }
+                    if ui.button("Salvar").clicked() {
+                        self.save_file();
+                        ui.close();
+                    }
+                });
+                ui.menu_button("Câmeras", |ui| {
+                    for (view, label) in [
+                        (View::Plan, "Planta"),
+                        (View::Isometric, "Isometria"),
+                        (View::Split, "Duas vistas"),
+                    ] {
+                        if ui.selectable_value(&mut self.view, view, label).clicked() {
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    ui.add(egui::Slider::new(&mut self.zoom, 12.0..=65.0).text("Zoom"));
+                });
+                ui.menu_button("Ferramentas", |ui| {
+                    for (tool, label) in [
+                        (Tool::Select, "Selecionar"),
+                        (Tool::Wall, "Parede"),
+                        (Tool::Door, "Porta"),
+                    ] {
+                        if tool != Tool::Select && self.modeling_mode == ModelingMode::Free {
+                            continue;
+                        }
+                        if ui.selectable_label(self.tool == tool, label).clicked() {
+                            self.activate_tool(tool);
+                            ui.close();
+                        }
+                    }
+                    ui.checkbox(&mut self.snap, "Snap 0,25 m");
+                    ui.separator();
+                    if ui
+                        .add_enabled(!self.undo_stack.is_empty(), egui::Button::new("Desfazer"))
+                        .clicked()
+                    {
+                        self.undo();
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(!self.redo_stack.is_empty(), egui::Button::new("Refazer"))
+                        .clicked()
+                    {
+                        self.redo();
+                        ui.close();
+                    }
+                });
+                ui.menu_button("Extensões", |ui| {
+                    ui.label("Nenhuma extensão disponível nesta versão.");
+                });
+                ui.menu_button("Janelas", |ui| {
+                    ui.checkbox(&mut self.show_navigator, "Navegador BIM");
+                    ui.checkbox(&mut self.show_inspector, "Propriedades");
+                });
+                ui.menu_button("Ajuda", |ui| {
+                    ui.strong("Guia rápido");
+                    ui.label("Escolha o modo de modelagem na faixa superior.");
+                    ui.label("Para desenhar uma parede, marque o início e o fim na planta.");
+                    ui.label("Selecione um elemento para consultar suas propriedades.");
+                    ui.label("Para salvar, informe o caminho do projeto em Arquivo.");
+                });
             });
         });
         egui::Panel::top("modeling_mode").show(ui, |ui| {
@@ -610,19 +656,6 @@ impl StudioApp {
                         self.switch_mode(mode);
                     }
                 }
-            });
-        });
-        egui::Panel::top("view_controls").show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(&mut self.view, View::Plan, "Planta");
-                ui.selectable_value(&mut self.view, View::Isometric, "Isometria");
-                ui.selectable_value(&mut self.view, View::Split, "Duas vistas");
-                ui.separator();
-                ui.add(egui::Slider::new(&mut self.zoom, 12.0..=65.0).text("Zoom"));
-                ui.checkbox(&mut self.snap, "Snap 0,25 m");
-                ui.separator();
-                ui.toggle_value(&mut self.show_navigator, "Navegador BIM");
-                ui.toggle_value(&mut self.show_inspector, "Propriedades");
             });
         });
         egui::Panel::bottom("status").show(ui, |ui| {
@@ -680,14 +713,18 @@ impl StudioApp {
             )
             .clicked()
         {
-            self.tool = tool;
-            self.pending_start = None;
-            if self.view == View::Isometric {
-                self.view = View::Plan;
-            }
-            if tool == Tool::Wall {
-                self.show_inspector = true;
-            }
+            self.activate_tool(tool);
+        }
+    }
+
+    fn activate_tool(&mut self, tool: Tool) {
+        self.tool = tool;
+        self.pending_start = None;
+        if self.view == View::Isometric {
+            self.view = View::Plan;
+        }
+        if tool == Tool::Wall {
+            self.show_inspector = true;
         }
     }
 
