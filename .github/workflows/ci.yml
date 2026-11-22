@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 4256215213daf4206ff12bdd4d9f370d4b495b51
+          ref: ea96a9537d7ba7d7e6c69a339dbfdf0dce984dc2
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
