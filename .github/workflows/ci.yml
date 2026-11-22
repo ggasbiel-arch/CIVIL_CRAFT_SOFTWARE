@@ -8,17 +8,17 @@ jobs:
   windows:
     runs-on: windows-latest
     env:
-      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 2f4e84f8facf4195ffba8a66e2adb6b2b4957b92
+          ref: 4256215213daf4206ff12bdd4d9f370d4b495b51
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-      - run: cargo build --locked --release -p civil_desktop --target x86_64-pc-windows-msvc
+      - run: cargo build --locked -p civil_desktop --target x86_64-pc-windows-msvc
       - uses: actions/upload-artifact@v4
         with:
-          name: civil-craft-win-x64
-          path: target/x86_64-pc-windows-msvc/release/civil_desktop.exe
+          name: civil-craft-layout-win-x64
+          path: target/x86_64-pc-windows-msvc/debug/civil_desktop.exe
           if-no-files-found: error
