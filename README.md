@@ -103,3 +103,16 @@ A licença do projeto ainda deve ser escolhida. Bibliotecas integradas no futuro
 - O prompt completo da **primeira tarefa de implementação** está em `CODEX_START_PROMPT.md`.
 - As regras permanentes do agente estão em `AGENTS.md`.
 - A presença desses arquivos não significa que importadores externos ou kernel CAD já estejam implementados.
+
+### Consultar um arquivo IFC
+
+No Windows x64, use Python 3.12 de 64 bits. A partir da pasta do repositório, prepare o ambiente e inicie o aplicativo na mesma sessão do PowerShell.
+
+```powershell
+py -3.12 -m venv .venv-ifc
+.\.venv-ifc\Scripts\python.exe -m pip install -r python/requirements-ifc.txt
+$env:CIVIL_CRAFT_PYTHON = (Resolve-Path .\.venv-ifc\Scripts\python.exe).Path
+cargo run -p civil_desktop
+```
+
+Em **Arquivo → Consultar IFC**, informe o caminho do arquivo STEP com extensão `.ifc` e clique em **Ler elementos**. O IfcOpenShell identifica o esquema, conta todas as instâncias de IfcElement por classe e exibe nome e GlobalId das primeiras 100. A consulta funciona em uma janela de leitura. Conversão em elementos editáveis, geometria e exportação ficam para outras etapas.

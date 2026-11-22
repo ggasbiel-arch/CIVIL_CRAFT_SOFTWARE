@@ -1,3 +1,4 @@
+mod ifc;
 use civil_core::{Element, Project};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, Vec2};
 use std::{fs, io::Write, path::Path};
@@ -23,6 +24,7 @@ enum ModelingMode {
 }
 
 struct StudioApp {
+    ifc: ifc::IfcInspector,
     modeling_mode: ModelingMode,
     project: Project,
     tool: Tool,
@@ -46,6 +48,7 @@ struct StudioApp {
 impl Default for StudioApp {
     fn default() -> Self {
         Self {
+            ifc: Default::default(),
             modeling_mode: ModelingMode::Parametric,
             project: Project::example(),
             tool: Tool::Select,
@@ -581,6 +584,11 @@ impl StudioApp {
                         self.save_file();
                         ui.close();
                     }
+                    ui.separator();
+                    if ui.button("Consultar IFC…").clicked() {
+                        self.ifc.open = true;
+                        ui.close();
+                    }
                 });
                 ui.menu_button("Câmeras", |ui| {
                     for (view, label) in [
@@ -642,6 +650,7 @@ impl StudioApp {
                 });
             });
         });
+        self.ifc.show(ui.ctx());
         egui::Panel::top("modeling_mode").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.strong("Modelagem");
