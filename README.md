@@ -27,7 +27,7 @@ Consulte `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md` para detalhes e limitaç�
 - **Novo E0.2:** tipos Rust para definições/instâncias BIM e origem de importação, com grafo paramétrico **numérico** e testes Rust; ferramenta auxiliar Python para avaliar parâmetros.
 - Exemplo de porta com definição reutilizável e override por instância (`samples/porta_parametrica.component.json`).
 
-**Não entregue:** importadores reais SKP/RFA/GSM/Eberick, motor CAD B-Rep, editor gráfico por nós, geração de sólidos a partir do grafo, recorte de paredes por portas, desenho de lajes na interface, janelas BIM nativas, cortes/elevações, IFC, RVT/PLN, cálculos estruturais, norma ABNT automatizada, LOD, BIM colaborativo e orçamento executivo.
+**Não entregue:** importadores reais SKP/RFA/GSM/Eberick, motor CAD B-Rep, editor gráfico por nós, geração de sólidos a partir do grafo, junção volumétrica exata entre paredes, desenho de lajes na interface, cortes/elevações, IFC, RVT/PLN, cálculos estruturais, norma ABNT automatizada, LOD, BIM colaborativo e orçamento executivo.
 
 ## Pré-requisitos (Windows 64 bits recomendado)
 
@@ -49,14 +49,26 @@ O Cargo baixa dependências da internet na primeira compilação. A janela abre 
 - À direita, o **Mapa do projeto** agrupa os elementos por pavimento e reúne os quantitativos brutos. Expanda um pavimento para acessar sua planta ou selecionar uma parede, laje ou componente. No topo, **+ Ferramentas** fixa ou remove atalhos durante a sessão. A faixa **Propriedades** tem rolagem horizontal e permite editar a largura da porta selecionada. A paleta flutuante da seleção permite mostrar as propriedades, desmarcar ou excluir o elemento. No rodapé, **OVM** controla a grade e as vistas. **Estilos** alterna entre Sombreado e Contornos. Use os controles do menu **Janelas** para ocultar ou reabrir cada painel.
 - No menu **Câmeras**, alterne entre **Planta**, **Isometria** e **Duas vistas** e ajuste o zoom. O snap fica em **Ferramentas**. **Duas vistas** distribui a planta e a isometria na horizontal quando há espaço e na vertical quando o centro está estreito. Ao escolher uma ferramenta na isometria, a interface volta à planta.
 
+### Paredes compostas e vãos hospedados
+
+1. Em **Arquivo → Abrir**, carregue `samples/oficina_paredes.CCW`. Ele contém seis paredes, dois pavimentos, duas portas, duas janelas e uma laje.
+2. Use **Parede** para marcar dois pontos da planta. **Em sequência** usa o fim da última parede como início da próxima. **Cancelar** encerra a sequência.
+3. Selecione uma parede e clique em **Editar parede…**. Ajuste os pontos, o eixo, o deslocamento lateral, a altura ou o vínculo ao pavimento superior. Adicione camadas, informe o material, função, espessura e prioridade e clique em **Aplicar alterações**. Também é possível arrastar uma extremidade selecionada na planta.
+4. Cruze duas paredes e aumente a prioridade de uma camada. A planta recompõe o material visível no encontro. O editor mostra a espessura total derivada da composição. As cores distinguem estrutura, acabamento e isolamento.
+5. Escolha **Porta** ou **Janela** e clique sobre a parede. Edite largura, altura ou peitoril pelas propriedades. **Duas vistas** permite acompanhar a abertura em planta e na prévia isométrica. Escolha outra hospedeira para transferir a esquadria. Remover a esquadria fecha o vão.
+6. No mapa do projeto, aplique uma nova cota ao pavimento superior. A altura das paredes vinculadas acompanha a mudança. O editor rejeita uma alteração que deixaria uma esquadria fora da hospedeira.
+7. Use **Desfazer**, **Refazer**, salve em um novo arquivo `.CCW` e reabra. Arquivos do esquema 1 são lidos e o próximo salvamento usa o esquema 2. Para continuar usando uma versão anterior do editor, preserve uma cópia do original.
+
+Os encontros retos usam recorte 2D por prioridade. A isometria usa prismas por camada e por trecho, inclusive sob peitoris e acima de vãos. Os volumes de parede continuam brutos. A área nominal dos vãos hospedados é apresentada separadamente. Detalhes, tolerâncias e limites estão no [ADR das paredes compostas](docs/adr/0002-paredes-compostas.md).
+
 ### Porta paramétrica
 
-1. Escolha **Porta** e clique na planta para posicionar a extremidade inicial no pavimento ativo. A porta é inserida ao longo do eixo X e selecionada automaticamente.
+1. Escolha **Porta** e clique na planta para posicionar a extremidade inicial no pavimento ativo. Ao clicar sobre uma parede, o vão acompanha seu eixo. Fora da parede, a porta independente usa o eixo X. A instância criada fica selecionada.
 2. Para voltar à edição, clique na porta com **Selecionar** ou escolha sua instância no **Mapa do projeto**.
 3. Informe uma largura de 0,60 a 2,00 m no inspetor e clique em **Aplicar largura**. A planta mostra o vão nominal. A vista isométrica mostra a folha calculada pelo grafo. Com 1,20 m de largura, a folha tem 1,16 m.
 4. Use **Desfazer** e **Refazer** para percorrer as edições da sessão. Salve e reabra o `.CCW` para recuperar as instâncias e seus parâmetros.
 
-A porta é independente da parede. A representação é simbólica na planta e formada por um contorno na isometria. O histórico existe em memória durante a sessão. Consulte [o ADR da integração](docs/adr/0001-componentes-no-documento.md) para detalhes de persistência e validação.
+A porta pode ser independente ou hospedada. Para trocar sua hospedeira, selecione a parede e a distância nas propriedades e clique em **Aplicar posição**. O histórico existe em memória durante a sessão. Consulte [o ADR da integração](docs/adr/0001-componentes-no-documento.md) para detalhes de persistência e validação.
 
 ## Comandos de automação Python
 
@@ -69,7 +81,7 @@ python python/component_tools.py set samples/porta_parametrica.component.json po
 python -m unittest discover -s tests -v
 ```
 
-A ferramenta Python usa apenas a biblioteca padrão.
+Os scripts usam a biblioteca padrão do Python. Para documentos de esquema 2, a CLI de projetos consulta o executável Rust `civil_model`. Gere-o com `cargo build -p civil_core --bin civil_model`. A variável `CIVIL_MODEL_BIN` permite informar seu caminho.
 
 ## Arquivos
 
