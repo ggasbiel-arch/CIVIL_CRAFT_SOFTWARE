@@ -25,7 +25,16 @@ enum ModelingMode {
     Free,
 }
 
+const TOOLS: [(Tool, &str); 3] = [
+    (Tool::Select, "Selecionar"),
+    (Tool::Wall, "Parede"),
+    (Tool::Door, "Porta"),
+];
+
 struct StudioApp {
+    pinned_tools: [bool; 3],
+    show_grid: bool,
+    outlines: bool,
     nr: nr::Biblioteca,
     normas: normas::Biblioteca,
     ifc: ifc::IfcInspector,
@@ -52,6 +61,9 @@ struct StudioApp {
 impl Default for StudioApp {
     fn default() -> Self {
         Self {
+            pinned_tools: [true, false, false],
+            show_grid: true,
+            outlines: false,
             nr: Default::default(),
             normas: Default::default(),
             ifc: Default::default(),
@@ -176,7 +188,7 @@ impl StudioApp {
         }
         if let Some((_, text)) = draft {
             ui.label("Largura da porta (m)");
-            ui.text_edit_singleline(text);
+            ui.add(egui::TextEdit::singleline(text).desired_width(72.0));
             if ui.button("Aplicar largura").clicked() {
                 match text.trim().replace(',', ".").parse() {
                     Ok(width) => self.apply_door_width(id, width),
@@ -285,31 +297,32 @@ impl StudioApp {
         };
         let xcount = ((rect.width() / scale / 2.0).ceil() as i32 + 1).min(150);
         let ycount = ((rect.height() / scale / 2.0).ceil() as i32 + 1).min(150);
-        for x in -xcount..=xcount {
-            let px = origin.x + x as f32 * scale;
-            let color = if x == 0 {
-                Color32::from_rgb(86, 151, 152)
-            } else {
-                Color32::from_rgb(43, 52, 63)
-            };
-            painter.line_segment(
-                [egui::pos2(px, rect.top()), egui::pos2(px, rect.bottom())],
-                Stroke::new(if x == 0 { 1.7 } else { 0.7 }, color),
-            );
+        if self.show_grid {
+            for x in -xcount..=xcount {
+                let px = origin.x + x as f32 * scale;
+                let color = if x == 0 {
+                    Color32::from_rgb(86, 151, 152)
+                } else {
+                    Color32::from_rgb(43, 52, 63)
+                };
+                painter.line_segment(
+                    [egui::pos2(px, rect.top()), egui::pos2(px, rect.bottom())],
+                    Stroke::new(if x == 0 { 1.7 } else { 0.7 }, color),
+                );
+            }
+            for y in -ycount..=ycount {
+                let py = origin.y + y as f32 * scale;
+                let color = if y == 0 {
+                    Color32::from_rgb(86, 151, 152)
+                } else {
+                    Color32::from_rgb(43, 52, 63)
+                };
+                painter.line_segment(
+                    [egui::pos2(rect.left(), py), egui::pos2(rect.right(), py)],
+                    Stroke::new(if y == 0 { 1.7 } else { 0.7 }, color),
+                );
+            }
         }
-        for y in -ycount..=ycount {
-            let py = origin.y + y as f32 * scale;
-            let color = if y == 0 {
-                Color32::from_rgb(86, 151, 152)
-            } else {
-                Color32::from_rgb(43, 52, 63)
-            };
-            painter.line_segment(
-                [egui::pos2(rect.left(), py), egui::pos2(rect.right(), py)],
-                Stroke::new(if y == 0 { 1.7 } else { 0.7 }, color),
-            );
-        }
-
         let (slabs, walls) = (
             self.project
                 .elements
@@ -328,7 +341,7 @@ impl StudioApp {
                 Element::Slab(slab) => {
                     let polygon: Vec<Pos2> =
                         slab.polygon.iter().copied().map(world_to_screen).collect();
-                    painter.add(Shape::convex_polygon(
+                    painter.add(self.model_polygon(
                         polygon,
                         Color32::from_rgb(54, 65, 74),
                         Stroke::new(1.2, Color32::from_rgb(100, 119, 132)),
@@ -343,7 +356,7 @@ impl StudioApp {
                     } else {
                         Color32::from_rgb(168, 201, 201)
                     };
-                    painter.add(Shape::convex_polygon(
+                    painter.add(self.model_polygon(
                         polygon,
                         fill,
                         Stroke::new(1.0, Color32::from_rgb(9, 22, 27)),
@@ -512,7 +525,7 @@ impl StudioApp {
                 let z = self.project.level_elevation(&slab.level_id);
                 let polygon: Vec<Pos2> =
                     slab.polygon.iter().map(|p| iso([p[0], p[1], z])).collect();
-                painter.add(Shape::convex_polygon(
+                painter.add(self.model_polygon(
                     polygon,
                     Color32::from_rgb(82, 101, 118),
                     Stroke::new(1.3, Color32::from_rgb(151, 170, 181)),
@@ -535,13 +548,13 @@ impl StudioApp {
                 };
                 for i in 0..4 {
                     let next = (i + 1) % 4;
-                    painter.add(Shape::convex_polygon(
+                    painter.add(self.model_polygon(
                         vec![base[i], base[next], top[next], top[i]],
                         fill,
                         Stroke::new(0.8, Color32::from_rgb(38, 54, 66)),
                     ));
                 }
-                painter.add(Shape::convex_polygon(
+                painter.add(self.model_polygon(
                     top,
                     Color32::from_rgb(190, 212, 220),
                     Stroke::new(1.1, Color32::from_rgb(42, 61, 70)),
@@ -685,7 +698,7 @@ impl StudioApp {
                     }
                     ui.separator();
                     ui.strong("Guia rápido");
-                    ui.label("Escolha o modo de modelagem na faixa superior.");
+                    ui.label("Escolha o modo de modelagem na faixa inferior.");
                     ui.label("Para desenhar uma parede, marque o início e o fim na planta.");
                     ui.label("Selecione um elemento para consultar suas propriedades.");
                     ui.label("Para salvar, informe o caminho do projeto em Arquivo.");
@@ -695,8 +708,58 @@ impl StudioApp {
         self.nr.mostrar(ui.ctx());
         self.normas.mostrar(ui.ctx());
         self.ifc.show(ui.ctx());
-        egui::Panel::top("modeling_mode").show(ui, |ui| {
+        egui::Panel::top("quick_tools").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
+                ui.menu_button("+ Ferramentas", |ui| {
+                    for (index, (_, label)) in TOOLS.iter().enumerate() {
+                        ui.checkbox(&mut self.pinned_tools[index], *label);
+                    }
+                });
+                for (index, (tool, label)) in TOOLS.iter().copied().enumerate() {
+                    if self.pinned_tools[index]
+                        && (tool == Tool::Select || self.modeling_mode == ModelingMode::Parametric)
+                        && ui.selectable_label(self.tool == tool, label).clicked()
+                    {
+                        self.activate_tool(tool);
+                    }
+                }
+            });
+        });
+        if self.show_inspector {
+            egui::Panel::top("property_strip").show(ui, |ui| {
+                egui::ScrollArea::horizontal()
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| self.inspector(ui));
+                    });
+            });
+        }
+        egui::Panel::bottom("modeling_mode").show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.menu_button("OVM", |ui| {
+                    ui.checkbox(&mut self.show_grid, "Grade da planta");
+                    for (view, label) in [
+                        (View::Plan, "Planta"),
+                        (View::Isometric, "Isometria"),
+                        (View::Split, "Duas vistas"),
+                    ] {
+                        if ui.selectable_value(&mut self.view, view, label).clicked() {
+                            ui.close();
+                        }
+                    }
+                });
+                ui.menu_button("Estilos", |ui| {
+                    if ui
+                        .selectable_value(&mut self.outlines, false, "Sombreado")
+                        .clicked()
+                        || ui
+                            .selectable_value(&mut self.outlines, true, "Contornos")
+                            .clicked()
+                    {
+                        ui.close();
+                    }
+                });
+                ui.separator();
                 ui.strong("Modelagem");
                 for (mode, label) in [
                     (ModelingMode::Parametric, "Paramétrica + visual por nós"),
@@ -736,7 +799,7 @@ impl StudioApp {
                     self.pending_start = None;
                 }
             });
-        if self.show_navigator || self.show_inspector {
+        if self.show_navigator {
             egui::Panel::right("project_sidebar")
                 .resizable(true)
                 .default_size(236.0)
@@ -744,23 +807,43 @@ impl StudioApp {
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            if self.show_navigator {
-                                self.navigator(ui);
-                            }
-                            if self.show_inspector {
-                                ui.separator();
-                                self.inspector(ui);
-                            }
-                        });
+                        .show(ui, |ui| self.navigator(ui));
                 });
         }
 
-        egui::CentralPanel::default().show(ui, |ui| match self.view {
+        let canvas = egui::CentralPanel::default().show(ui, |ui| match self.view {
             View::Plan => self.draw_plan(ui),
             View::Isometric => self.draw_iso(ui),
             View::Split => self.split_views(ui),
         });
+        if let Some(id) = self.selected_id.clone() {
+            egui::Window::new("Seleção")
+                .default_pos(canvas.response.rect.left_top() + Vec2::new(12.0, 46.0))
+                .resizable(false)
+                .collapsible(false)
+                .show(ui.ctx(), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong(&id);
+                        if ui.button("Propriedades").clicked() {
+                            self.show_inspector = true;
+                        }
+                        if ui.button("Desmarcar").clicked() {
+                            self.selected_id = None;
+                        }
+                        if ui.button("Excluir").clicked() {
+                            self.delete_element(&id);
+                        }
+                    });
+                });
+        }
+    }
+
+    fn model_polygon(&self, points: Vec<Pos2>, fill: Color32, stroke: Stroke) -> Shape {
+        if self.outlines {
+            Shape::closed_line(points, Stroke::new(stroke.width.max(1.2), fill))
+        } else {
+            Shape::convex_polygon(points, fill, stroke)
+        }
     }
 
     fn switch_mode(&mut self, mode: ModelingMode) {
@@ -964,17 +1047,17 @@ impl StudioApp {
                 self.door_inspector(ui, id);
             }
         }
-        ui.separator();
-        if ui.button("Excluir elemento").clicked() {
-            self.save_snapshot();
-            self.project.elements.retain(|element| element.id() != id);
-            self.project
-                .component_instances
-                .retain(|placed| placed.instance.id != id);
-            self.door_width_draft = None;
-            self.selected_id = None;
-            self.status = "Elemento excluído".into();
-        }
+    }
+
+    fn delete_element(&mut self, id: &str) {
+        self.save_snapshot();
+        self.project.elements.retain(|element| element.id() != id);
+        self.project
+            .component_instances
+            .retain(|placed| placed.instance.id != id);
+        self.door_width_draft = None;
+        self.selected_id = None;
+        self.status = "Elemento excluído".into();
     }
 }
 
