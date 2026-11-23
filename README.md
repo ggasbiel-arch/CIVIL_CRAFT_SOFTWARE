@@ -116,3 +116,9 @@ cargo run -p civil_desktop
 ```
 
 Em **Arquivo → Consultar IFC**, informe o caminho do arquivo STEP com extensão `.ifc` e clique em **Ler elementos**. O IfcOpenShell identifica o esquema, conta todas as instâncias de IfcElement por classe e exibe nome e GlobalId das primeiras 100. A consulta funciona em uma janela de leitura. Conversão em elementos editáveis, geometria e exportação ficam para outras etapas.
+
+### Biblioteca de normas
+
+Abra **Ajuda → Biblioteca de normas ABNT** para pesquisar por código, assunto ou edição. A seleção inicial contém oito referências de construção civil, com descrições temáticas. Consulte o catálogo oficial pelo link da janela para verificar título, edição, vigência e disponibilidade do documento.
+
+Em **Carregar catálogo local**, abra um índice TSV em UTF-8 com as colunas `codigo`, `assunto` e `edicao`, como em `biblioteca/referencias-abnt.tsv`. O índice pode abranger qualquer área e conter várias edições da mesma norma. Uma edição desconhecida pode ficar vazia. O catálogo carregado substitui a seleção exibida na sessão. Para usá-lo em cada inicialização, defina `CIVIL_CRAFT_ABNT_TSV` com o caminho do arquivo. A distribuição dos textos integrais e a sincronização com acervos comerciais dependem do fornecimento de uma fonte licenciada.
