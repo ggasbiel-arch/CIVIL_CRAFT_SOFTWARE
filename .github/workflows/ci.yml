@@ -12,13 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ea96a9537d7ba7d7e6c69a339dbfdf0dce984dc2
+          ref: 9dbdc25453c4d76b3326504d23d765b44c280f61
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
       - run: cargo build --locked -p civil_desktop --target x86_64-pc-windows-msvc
       - uses: actions/upload-artifact@v4
         with:
-          name: civil-craft-layout-win-x64
+          name: CIVIL-CRAFT-CAD-BIM-9dbdc25-Windows-x64
           path: target/x86_64-pc-windows-msvc/debug/civil_desktop.exe
           if-no-files-found: error
