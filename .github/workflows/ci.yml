@@ -12,13 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 9dbdc25453c4d76b3326504d23d765b44c280f61
+          ref: d75463df82861e9882a6c329d6cd3149b614bc9a
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-      - run: cargo build --locked -p civil_desktop --target x86_64-pc-windows-msvc
+      - run: cargo build --locked --workspace --target x86_64-pc-windows-msvc
+      - name: Empacotar editor, motor de automação e projeto de paredes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path pacote
+          Copy-Item target/x86_64-pc-windows-msvc/debug/civil_desktop.exe pacote
+          Copy-Item target/x86_64-pc-windows-msvc/debug/civil_model.exe,samples/oficina_paredes.CCW pacote
       - uses: actions/upload-artifact@v4
         with:
-          name: CIVIL-CRAFT-CAD-BIM-9dbdc25-Windows-x64
-          path: target/x86_64-pc-windows-msvc/debug/civil_desktop.exe
+          name: CIVIL-CRAFT-Paredes-Windows-x64
+          path: pacote/
           if-no-files-found: error
