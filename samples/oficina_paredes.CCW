@@ -1,0 +1,466 @@
+{
+  "schema_version": 2,
+  "name": "Oficina de paredes e esquadrias",
+  "levels": [
+    {
+      "id": "P0",
+      "name": "Térreo",
+      "elevation_m": 0.0
+    },
+    {
+      "id": "P1",
+      "name": "Superior",
+      "elevation_m": 3.1
+    }
+  ],
+  "elements": [
+    {
+      "type": "wall",
+      "id": "W1",
+      "level_id": "P0",
+      "start": [
+        -4.0,
+        -3.0
+      ],
+      "end": [
+        4.0,
+        -3.0
+      ],
+      "thickness_m": 0.2,
+      "height_m": 2.8,
+      "top_level_id": "P1",
+      "layers": [
+        {
+          "material": "Alvenaria",
+          "role": "Structure",
+          "thickness_m": 0.16,
+          "priority": 5
+        },
+        {
+          "material": "Revestimento",
+          "role": "Finish",
+          "thickness_m": 0.04,
+          "priority": 1
+        }
+      ]
+    },
+    {
+      "type": "wall",
+      "id": "W2",
+      "level_id": "P0",
+      "start": [
+        4.0,
+        -3.0
+      ],
+      "end": [
+        4.0,
+        3.0
+      ],
+      "thickness_m": 0.2,
+      "height_m": 2.8,
+      "top_level_id": "P1",
+      "layers": [
+        {
+          "material": "Alvenaria",
+          "role": "Structure",
+          "thickness_m": 0.16,
+          "priority": 5
+        },
+        {
+          "material": "Revestimento",
+          "role": "Finish",
+          "thickness_m": 0.04,
+          "priority": 1
+        }
+      ]
+    },
+    {
+      "type": "wall",
+      "id": "W3",
+      "level_id": "P0",
+      "start": [
+        4.0,
+        3.0
+      ],
+      "end": [
+        -4.0,
+        3.0
+      ],
+      "thickness_m": 0.2,
+      "height_m": 2.8,
+      "top_level_id": "P1",
+      "layers": [
+        {
+          "material": "Alvenaria",
+          "role": "Structure",
+          "thickness_m": 0.16,
+          "priority": 5
+        },
+        {
+          "material": "Revestimento",
+          "role": "Finish",
+          "thickness_m": 0.04,
+          "priority": 1
+        }
+      ]
+    },
+    {
+      "type": "wall",
+      "id": "W4",
+      "level_id": "P0",
+      "start": [
+        -4.0,
+        3.0
+      ],
+      "end": [
+        -4.0,
+        -3.0
+      ],
+      "thickness_m": 0.2,
+      "height_m": 2.8,
+      "top_level_id": "P1",
+      "layers": [
+        {
+          "material": "Alvenaria",
+          "role": "Structure",
+          "thickness_m": 0.16,
+          "priority": 5
+        },
+        {
+          "material": "Revestimento",
+          "role": "Finish",
+          "thickness_m": 0.04,
+          "priority": 1
+        }
+      ]
+    },
+    {
+      "type": "slab",
+      "id": "S1",
+      "level_id": "P0",
+      "polygon": [
+        [
+          -4.1,
+          -3.1
+        ],
+        [
+          4.1,
+          -3.1
+        ],
+        [
+          4.1,
+          3.1
+        ],
+        [
+          -4.1,
+          3.1
+        ]
+      ],
+      "thickness_m": 0.15
+    },
+    {
+      "type": "wall",
+      "id": "W5",
+      "level_id": "P0",
+      "start": [
+        0,
+        -3
+      ],
+      "end": [
+        0,
+        3
+      ],
+      "height_m": 2.8,
+      "thickness_m": 0.15
+    },
+    {
+      "type": "wall",
+      "id": "W6",
+      "level_id": "P1",
+      "start": [
+        -4,
+        -3
+      ],
+      "end": [
+        4,
+        -3
+      ],
+      "height_m": 2.8,
+      "thickness_m": 0.2
+    }
+  ],
+  "component_definitions": {
+    "DOOR-001": {
+      "id": "DOOR-001",
+      "name": "Porta paramétrica de demonstração",
+      "classification": "IfcDoor",
+      "provenance": {
+        "source_application": "manual",
+        "source_format": "native-prototype",
+        "source_identifier": null,
+        "source_version": "0.2",
+        "original_attributes": {
+          "nota": "Exemplo fictício; não foi importado do Revit"
+        },
+        "conversion_warnings": []
+      },
+      "parameters": {
+        "largura_m": {
+          "value": 0.9,
+          "unit": "m",
+          "min": 0.6,
+          "max": 2.0,
+          "label": "Largura da porta"
+        },
+        "altura_m": {
+          "value": 2.1,
+          "unit": "m",
+          "min": 1.8,
+          "max": 3.0,
+          "label": "Altura da porta"
+        },
+        "folga_m": {
+          "value": 0.04,
+          "unit": "m",
+          "min": 0.0,
+          "max": 0.1,
+          "label": "Folga da folha"
+        }
+      },
+      "property_sets": {
+        "Pset_DoorCommon": {
+          "IsExternal": false,
+          "FireRating": ""
+        }
+      },
+      "graph": {
+        "nodes": [
+          {
+            "id": "n_largura",
+            "op": "input",
+            "parameter": "largura_m"
+          },
+          {
+            "id": "n_folga",
+            "op": "input",
+            "parameter": "folga_m"
+          },
+          {
+            "id": "n_folha",
+            "op": "subtract",
+            "a": "n_largura",
+            "b": "n_folga"
+          },
+          {
+            "id": "n_altura",
+            "op": "input",
+            "parameter": "altura_m"
+          },
+          {
+            "id": "n_area",
+            "op": "multiply",
+            "a": "n_folha",
+            "b": "n_altura"
+          }
+        ],
+        "outputs": {
+          "largura_folha_m": "n_folha",
+          "area_folha_m2": "n_area"
+        }
+      }
+    },
+    "WINDOW-001": {
+      "id": "WINDOW-001",
+      "name": "Janela de uma folha",
+      "classification": "IfcWindow",
+      "provenance": {
+        "source_application": "manual",
+        "source_format": "native-prototype",
+        "source_identifier": null,
+        "source_version": "0.2",
+        "original_attributes": {},
+        "conversion_warnings": []
+      },
+      "parameters": {
+        "largura_m": {
+          "value": 1.2,
+          "unit": "m",
+          "min": 0.6,
+          "max": 2.0,
+          "label": "Largura da janela"
+        },
+        "altura_m": {
+          "value": 1.0,
+          "unit": "m",
+          "min": 0.2,
+          "max": 3.0,
+          "label": "Altura da janela"
+        },
+        "folga_m": {
+          "value": 0.04,
+          "unit": "m",
+          "min": 0.0,
+          "max": 0.1,
+          "label": "Folga da folha"
+        },
+        "peitoril_m": {
+          "value": 1.0,
+          "min": 0.0,
+          "max": 10.0,
+          "label": "Altura do peitoril",
+          "unit": "m"
+        }
+      },
+      "property_sets": {},
+      "graph": {
+        "nodes": [
+          {
+            "id": "n_largura",
+            "op": "input",
+            "parameter": "largura_m"
+          },
+          {
+            "id": "n_folga",
+            "op": "input",
+            "parameter": "folga_m"
+          },
+          {
+            "id": "n_folha",
+            "op": "subtract",
+            "a": "n_largura",
+            "b": "n_folga"
+          },
+          {
+            "id": "n_altura",
+            "op": "input",
+            "parameter": "altura_m"
+          },
+          {
+            "id": "n_area",
+            "op": "multiply",
+            "a": "n_folha",
+            "b": "n_altura"
+          }
+        ],
+        "outputs": {
+          "largura_folha_m": "n_folha",
+          "area_folha_m2": "n_area"
+        }
+      }
+    }
+  },
+  "component_instances": [
+    {
+      "id": "D1",
+      "level_id": "P0",
+      "definition_id": "DOOR-001",
+      "overrides": {},
+      "transform": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "host": {
+        "wall_id": "W1",
+        "distance_m": 1.0
+      }
+    },
+    {
+      "id": "D2",
+      "level_id": "P0",
+      "definition_id": "DOOR-001",
+      "overrides": {},
+      "transform": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "host": {
+        "wall_id": "W2",
+        "distance_m": 1.0
+      }
+    },
+    {
+      "id": "J1",
+      "level_id": "P0",
+      "definition_id": "WINDOW-001",
+      "overrides": {},
+      "transform": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "host": {
+        "wall_id": "W3",
+        "distance_m": 1.0
+      }
+    },
+    {
+      "id": "J2",
+      "level_id": "P0",
+      "definition_id": "WINDOW-001",
+      "overrides": {},
+      "transform": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "host": {
+        "wall_id": "W4",
+        "distance_m": 1.0
+      }
+    }
+  ]
+}

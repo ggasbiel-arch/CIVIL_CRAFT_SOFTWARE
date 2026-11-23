@@ -10,7 +10,26 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import subprocess
 from pathlib import Path
+
+
+def model_command(project: dict, command: dict) -> dict:
+    """Run one operation against an isolated copy of the document in civil_core."""
+    root = Path(__file__).resolve().parents[1]
+    binary = os.environ.get("CIVIL_MODEL_BIN")
+    if not binary:
+        name = "civil_model.exe" if os.name == "nt" else "civil_model"
+        binary = next((root / "target" / profile / name for profile in ("release", "debug")
+                       if (root / "target" / profile / name).is_file()), None)
+    if not binary:
+        raise ValueError("Compile o núcleo com cargo build -p civil_core --bin civil_model ou defina CIVIL_MODEL_BIN.")
+    result = subprocess.run([str(binary)], input=json.dumps({"project": project, "command": command}),
+                            text=True, encoding="utf-8", capture_output=True, check=False)
+    if result.returncode:
+        raise ValueError(result.stderr.strip())
+    return json.loads(result.stdout)
 
 
 def read_project(path: Path) -> dict:
@@ -34,6 +53,9 @@ def polygon_area(poly: list[list[float]]) -> float:
 
 
 def validate_project(project: dict) -> None:
+    if project.get("schema_version") == 2:
+        model_command(project, {"op": "validate"})
+        return
     if project.get("schema_version") != 1:
         raise ValueError("Versão do schema não suportada")
     if not isinstance(project.get("name"), str) or not project["name"].strip():
@@ -96,6 +118,8 @@ def validate_project(project: dict) -> None:
 
 
 def quantities(project: dict) -> dict:
+    if project.get("schema_version") == 2:
+        return model_command(project, {"op": "summary"})
     output = {"wall_length_m": 0.0, "wall_gross_area_m2": 0.0,
               "wall_gross_volume_m3": 0.0, "slab_area_m2": 0.0, "slab_volume_m3": 0.0}
     for element in project["elements"]:
@@ -113,6 +137,11 @@ def quantities(project: dict) -> dict:
 
 
 def add_wall(project: dict, level_id: str, start: list[float], end: list[float], thickness_m: float, height_m: float) -> str:
+    if project.get("schema_version") == 2:
+        result = model_command(project, {"op": "add_wall", "level_id": level_id, "start": start, "end": end,
+                                         "thickness_m": thickness_m, "height_m": height_m})
+        project.update(result["project"])
+        return result["id"]
     used = {element["id"] for element in project["elements"]}
     used.update(instance["id"] for instance in project.get("component_instances", []))
     number = 1
