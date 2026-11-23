@@ -122,3 +122,7 @@ Em **Arquivo → Consultar IFC**, informe o caminho do arquivo STEP com extensã
 Abra **Ajuda → Biblioteca de normas ABNT** para pesquisar por código, assunto ou edição. A seleção inicial contém oito referências de construção civil, com descrições temáticas. Consulte o catálogo oficial pelo link da janela para verificar título, edição, vigência e disponibilidade do documento.
 
 Em **Carregar catálogo local**, abra um índice TSV em UTF-8 com as colunas `codigo`, `assunto` e `edicao`, como em `biblioteca/referencias-abnt.tsv`. O índice pode abranger qualquer área e conter várias edições da mesma norma. Uma edição desconhecida pode ficar vazia. O catálogo carregado substitui a seleção exibida na sessão. Para usá-lo em cada inicialização, defina `CIVIL_CRAFT_ABNT_TSV` com o caminho do arquivo. A distribuição dos textos integrais e a sincronização com acervos comerciais dependem do fornecimento de uma fonte licenciada.
+
+### Normas Regulamentadoras do trabalho
+
+Em **Ajuda → Normas Regulamentadoras (NR)**, pesquise pelo número ou por palavras do título. O índice local consultado em 23/11/2026 contém NR-1 a NR-38 e inclui as revogadas NR-2 e NR-27. Use **Somente vigentes** para filtrar. Cada item abre a página correspondente do Ministério do Trabalho e Emprego no navegador. A consulta ao índice funciona offline e a leitura das publicações oficiais requer internet.

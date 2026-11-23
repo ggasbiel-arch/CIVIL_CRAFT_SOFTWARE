@@ -1,5 +1,6 @@
 mod ifc;
 mod normas;
+mod nr;
 use civil_core::{Element, Project};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, Vec2};
 use std::{fs, io::Write, path::Path};
@@ -25,6 +26,7 @@ enum ModelingMode {
 }
 
 struct StudioApp {
+    nr: nr::Biblioteca,
     normas: normas::Biblioteca,
     ifc: ifc::IfcInspector,
     modeling_mode: ModelingMode,
@@ -50,6 +52,7 @@ struct StudioApp {
 impl Default for StudioApp {
     fn default() -> Self {
         Self {
+            nr: Default::default(),
             normas: Default::default(),
             ifc: Default::default(),
             modeling_mode: ModelingMode::Parametric,
@@ -672,6 +675,10 @@ impl StudioApp {
                     ui.checkbox(&mut self.show_inspector, "Propriedades");
                 });
                 ui.menu_button("Ajuda", |ui| {
+                    if ui.button("Normas Regulamentadoras (NR)…").clicked() {
+                        self.nr.aberta = true;
+                        ui.close();
+                    }
                     if ui.button("Biblioteca de normas ABNT…").clicked() {
                         self.normas.aberta = true;
                         ui.close();
@@ -685,6 +692,7 @@ impl StudioApp {
                 });
             });
         });
+        self.nr.mostrar(ui.ctx());
         self.normas.mostrar(ui.ctx());
         self.ifc.show(ui.ctx());
         egui::Panel::top("modeling_mode").show(ui, |ui| {
