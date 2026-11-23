@@ -21,7 +21,7 @@ Consulte `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md` para detalhes e limitaç�
 - Validação de IDs, dimensões e referências; cálculo preliminar de quantitativos **brutos**.
 - Editor desktop com planta 2D, grade, snap, desenho de paredes, seleção, exclusão, desfazer/refazer.
 - Vista **isométrica ilustrativa** baseada nos elementos, sem renderizador 3D real nem B-Rep.
-- Abrir/salvar arquivos `.bim.json` (formato experimental, próprio do protótipo).
+- Abrir e salvar projetos `.CCW` com o esquema BIM versionado em JSON. Arquivos anteriores `.bim.json` também podem ser abertos. Ao salvá-los, o editor cria uma cópia `.CCW`.
 - Ferramenta Python para validar, listar quantitativos e inserir paredes no arquivo.
 - Modelo demonstrativo e testes básicos.
 - **Novo E0.2:** tipos Rust para definições/instâncias BIM e origem de importação, com grafo paramétrico **numérico** e testes Rust; ferramenta auxiliar Python para avaliar parâmetros.
@@ -41,14 +41,20 @@ Consulte `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md` para detalhes e limitaç�
 cargo run --release -p civil_desktop
 ```
 
-O Cargo baixa dependências da internet na primeira compilação. A janela exibe um modelo de exemplo. Escolha **Parede** e clique duas vezes na planta para indicar início e fim de uma parede. Com **Selecionar**, clique numa parede para selecioná-la ou use a lista à esquerda. Para salvar/abrir, informe o caminho na barra inferior e use os botões superiores.
+O Cargo baixa dependências da internet na primeira compilação. A janela abre a Casa piloto em **Planta**, com a ferramenta **Selecionar** ativa.
+
+- No menu **Arquivo**, use **Novo**, **Exemplo**, **Abrir** e **Salvar**. Informe o caminho `.CCW` no campo ao lado dos comandos de arquivo.
+- A faixa inferior **Modelagem** alterna entre **Paramétrica + visual por nós** e **Livre** no mesmo documento. O primeiro modo reúne as ferramentas de arquitetura e permite consultar as saídas do grafo do componente selecionado. O segundo permite navegar e selecionar. A edição visual dos nós e as ferramentas de geometria livre seguem planejadas.
+- Na paleta **Ferramentas** à esquerda, escolha **Parede** e marque o início e o fim na planta. Em **Propriedades**, o grupo **Próxima parede** define as dimensões para o próximo desenho.
+- À direita, o **Mapa do projeto** agrupa os elementos por pavimento e reúne os quantitativos brutos. Expanda um pavimento para acessar sua planta ou selecionar uma parede, laje ou componente. No topo, **+ Ferramentas** fixa ou remove atalhos durante a sessão. A faixa **Propriedades** tem rolagem horizontal e permite editar a largura da porta selecionada. A paleta flutuante da seleção permite mostrar as propriedades, desmarcar ou excluir o elemento. No rodapé, **OVM** controla a grade e as vistas. **Estilos** alterna entre Sombreado e Contornos. Use os controles do menu **Janelas** para ocultar ou reabrir cada painel.
+- No menu **Câmeras**, alterne entre **Planta**, **Isometria** e **Duas vistas** e ajuste o zoom. O snap fica em **Ferramentas**. **Duas vistas** distribui a planta e a isometria na horizontal quando há espaço e na vertical quando o centro está estreito. Ao escolher uma ferramenta na isometria, a interface volta à planta.
 
 ### Porta paramétrica
 
 1. Escolha **Porta** e clique na planta para posicionar a extremidade inicial no pavimento ativo. A porta é inserida ao longo do eixo X e selecionada automaticamente.
-2. Para voltar à edição, clique na porta com **Selecionar** ou escolha sua instância no **Navegador BIM**.
+2. Para voltar à edição, clique na porta com **Selecionar** ou escolha sua instância no **Mapa do projeto**.
 3. Informe uma largura de 0,60 a 2,00 m no inspetor e clique em **Aplicar largura**. A planta mostra o vão nominal. A vista isométrica mostra a folha calculada pelo grafo. Com 1,20 m de largura, a folha tem 1,16 m.
-4. Use **Desfazer** e **Refazer** para percorrer as edições da sessão. Salve e reabra o `.bim.json` para recuperar as instâncias e seus parâmetros.
+4. Use **Desfazer** e **Refazer** para percorrer as edições da sessão. Salve e reabra o `.CCW` para recuperar as instâncias e seus parâmetros.
 
 A porta é independente da parede. A representação é simbólica na planta e formada por um contorno na isometria. O histórico existe em memória durante a sessão. Consulte [o ADR da integração](docs/adr/0001-componentes-no-documento.md) para detalhes de persistência e validação.
 
@@ -57,7 +63,7 @@ A porta é independente da parede. A representação é simbólica na planta e f
 ```powershell
 python python/civil_tools.py validate samples/casa_piloto.bim.json
 python python/civil_tools.py summary samples/casa_piloto.bim.json
-python python/civil_tools.py add-wall samples/casa_piloto.bim.json saida.bim.json --start 0 0 --end 3 0
+python python/civil_tools.py add-wall samples/casa_piloto.bim.json saida.CCW --start 0 0 --end 3 0
 python python/component_tools.py evaluate samples/porta_parametrica.component.json
 python python/component_tools.py set samples/porta_parametrica.component.json porta_maior.json largura_m 1.20
 python -m unittest discover -s tests -v
@@ -97,3 +103,26 @@ A licença do projeto ainda deve ser escolhida. Bibliotecas integradas no futuro
 - O prompt completo da **primeira tarefa de implementação** está em `CODEX_START_PROMPT.md`.
 - As regras permanentes do agente estão em `AGENTS.md`.
 - A presença desses arquivos não significa que importadores externos ou kernel CAD já estejam implementados.
+
+### Consultar um arquivo IFC
+
+No Windows x64, use Python 3.12 de 64 bits. A partir da pasta do repositório, prepare o ambiente e inicie o aplicativo na mesma sessão do PowerShell.
+
+```powershell
+py -3.12 -m venv .venv-ifc
+.\.venv-ifc\Scripts\python.exe -m pip install -r python/requirements-ifc.txt
+$env:CIVIL_CRAFT_PYTHON = (Resolve-Path .\.venv-ifc\Scripts\python.exe).Path
+cargo run -p civil_desktop
+```
+
+Em **Arquivo → Consultar IFC**, informe o caminho do arquivo STEP com extensão `.ifc` e clique em **Ler elementos**. O IfcOpenShell identifica o esquema, conta todas as instâncias de IfcElement por classe e exibe nome e GlobalId das primeiras 100. A consulta funciona em uma janela de leitura. Conversão em elementos editáveis, geometria e exportação ficam para outras etapas.
+
+### Biblioteca de normas
+
+Abra **Ajuda → Biblioteca de normas ABNT** para pesquisar por código, assunto ou edição. A seleção inicial contém oito referências de construção civil, com descrições temáticas. Consulte o catálogo oficial pelo link da janela para verificar título, edição, vigência e disponibilidade do documento.
+
+Em **Carregar catálogo local**, abra um índice TSV em UTF-8 com as colunas `codigo`, `assunto` e `edicao`, como em `biblioteca/referencias-abnt.tsv`. O índice pode abranger qualquer área e conter várias edições da mesma norma. Uma edição desconhecida pode ficar vazia. O catálogo carregado substitui a seleção exibida na sessão. Para usá-lo em cada inicialização, defina `CIVIL_CRAFT_ABNT_TSV` com o caminho do arquivo. A distribuição dos textos integrais e a sincronização com acervos comerciais dependem do fornecimento de uma fonte licenciada.
+
+### Normas Regulamentadoras do trabalho
+
+Em **Ajuda → Normas Regulamentadoras (NR)**, pesquise pelo número ou por palavras do título. O índice local consultado em 23/11/2026 contém NR-1 a NR-38 e inclui as revogadas NR-2 e NR-27. Use **Somente vigentes** para filtrar. Cada item abre a página correspondente do Ministério do Trabalho e Emprego no navegador. A consulta ao índice funciona offline e a leitura das publicações oficiais requer internet.
