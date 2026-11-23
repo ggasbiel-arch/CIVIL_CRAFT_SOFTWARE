@@ -671,7 +671,7 @@ impl StudioApp {
                     ui.label("Nenhuma extensão disponível nesta versão.");
                 });
                 ui.menu_button("Janelas", |ui| {
-                    ui.checkbox(&mut self.show_navigator, "Navegador BIM");
+                    ui.checkbox(&mut self.show_navigator, "Mapa do projeto");
                     ui.checkbox(&mut self.show_inspector, "Propriedades");
                 });
                 ui.menu_button("Ajuda", |ui| {
@@ -736,11 +736,24 @@ impl StudioApp {
                     self.pending_start = None;
                 }
             });
-        if self.show_navigator {
-            self.navigator(ui);
-        }
-        if self.show_inspector {
-            self.inspector(ui);
+        if self.show_navigator || self.show_inspector {
+            egui::Panel::right("project_sidebar")
+                .resizable(true)
+                .default_size(236.0)
+                .size_range(180.0..=320.0)
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if self.show_navigator {
+                                self.navigator(ui);
+                            }
+                            if self.show_inspector {
+                                ui.separator();
+                                self.inspector(ui);
+                            }
+                        });
+                });
         }
 
         egui::CentralPanel::default().show(ui, |ui| match self.view {
@@ -802,118 +815,111 @@ impl StudioApp {
     }
 
     fn navigator(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::left("navigator")
-            .resizable(true)
-            .default_size(192.0)
-            .size_range(160.0..=240.0)
-            .show(ui, |ui| {
-                ui.heading("Navegador BIM");
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.label("Projeto");
-                        ui.text_edit_singleline(&mut self.project.name);
-                        ui.separator();
-                        ui.strong("Pavimentos");
-                        for level in &self.project.levels {
-                            if ui
-                                .selectable_label(
-                                    self.active_level == level.id,
-                                    format!("{}  •  {:.2} m", level.name, level.elevation_m),
-                                )
-                                .clicked()
-                            {
-                                self.active_level = level.id.clone();
-                                self.pending_start = None;
-                            }
+        ui.heading("Mapa do projeto");
+        ui.label("Projeto");
+        ui.text_edit_singleline(&mut self.project.name);
+        ui.separator();
+        ui.strong("Pavimentos");
+        for level in &self.project.levels {
+            egui::CollapsingHeader::new(format!("{}  •  {:.2} m", level.name, level.elevation_m))
+                .id_salt(("project_level", &level.id))
+                .default_open(self.active_level == level.id)
+                .show(ui, |ui| {
+                    if ui
+                        .selectable_label(self.active_level == level.id, "Planta do pavimento")
+                        .clicked()
+                    {
+                        self.active_level = level.id.clone();
+                        self.pending_start = None;
+                        self.selected_id = None;
+                        if self.view == View::Isometric {
+                            self.view = View::Plan;
                         }
-                        ui.separator();
-                        ui.strong("Elementos");
-                        for element in &self.project.elements {
-                            let kind = match element {
-                                Element::Wall(_) => "Parede",
-                                Element::Slab(_) => "Laje",
-                            };
-                            if ui
-                                .selectable_label(
-                                    self.selected_id.as_deref() == Some(element.id()),
-                                    format!("{}  {}", element.id(), kind),
-                                )
-                                .clicked()
-                            {
-                                self.selected_id = Some(element.id().to_owned());
-                                self.active_level = element.level_id().into();
-                                self.pending_start = None;
-                                self.tool = Tool::Select;
-                            }
+                    }
+                    for element in self
+                        .project
+                        .elements
+                        .iter()
+                        .filter(|element| element.level_id() == level.id)
+                    {
+                        let kind = match element {
+                            Element::Wall(_) => "Parede",
+                            Element::Slab(_) => "Laje",
+                        };
+                        if ui
+                            .selectable_label(
+                                self.selected_id.as_deref() == Some(element.id()),
+                                format!("{}  {}", element.id(), kind),
+                            )
+                            .clicked()
+                        {
+                            self.selected_id = Some(element.id().to_owned());
+                            self.active_level = element.level_id().into();
+                            self.pending_start = None;
+                            self.tool = Tool::Select;
                         }
-                        for placed in &self.project.component_instances {
-                            let id = &placed.instance.id;
-                            let definition =
-                                &self.project.component_definitions[&placed.instance.definition_id];
-                            if ui
-                                .selectable_label(
-                                    self.selected_id.as_ref() == Some(id),
-                                    format!("{id}  {}", definition.name),
-                                )
-                                .clicked()
-                            {
-                                self.selected_id = Some(id.clone());
-                                self.active_level = placed.level_id.clone();
-                                self.tool = Tool::Select;
-                                self.pending_start = None;
-                            }
+                    }
+                    for placed in self
+                        .project
+                        .component_instances
+                        .iter()
+                        .filter(|placed| placed.level_id == level.id)
+                    {
+                        let id = &placed.instance.id;
+                        let definition =
+                            &self.project.component_definitions[&placed.instance.definition_id];
+                        if ui
+                            .selectable_label(
+                                self.selected_id.as_ref() == Some(id),
+                                format!("{id}  {}", definition.name),
+                            )
+                            .clicked()
+                        {
+                            self.selected_id = Some(id.clone());
+                            self.active_level = placed.level_id.clone();
+                            self.tool = Tool::Select;
+                            self.pending_start = None;
                         }
-                        ui.separator();
-                        ui.collapsing("Quantitativos brutos", |ui| {
-                            let q = self.project.quantities();
-                            ui.label(format!("Paredes: {:.2} m", q.wall_length_m));
-                            ui.label(format!("Área de paredes: {:.2} m²", q.wall_gross_area_m2));
-                            ui.label(format!(
-                                "Volume de paredes: {:.2} m³",
-                                q.wall_gross_volume_m3
-                            ));
-                            ui.label(format!("Área de lajes: {:.2} m²", q.slab_area_m2));
-                            ui.label(format!("Volume de lajes: {:.2} m³", q.slab_volume_m3));
-                        });
-                    });
-            });
+                    }
+                });
+        }
+        ui.separator();
+        ui.collapsing("Quantitativos brutos", |ui| {
+            let q = self.project.quantities();
+            ui.label(format!("Paredes: {:.2} m", q.wall_length_m));
+            ui.label(format!("Área de paredes: {:.2} m²", q.wall_gross_area_m2));
+            ui.label(format!(
+                "Volume de paredes: {:.2} m³",
+                q.wall_gross_volume_m3
+            ));
+            ui.label(format!("Área de lajes: {:.2} m²", q.slab_area_m2));
+            ui.label(format!("Volume de lajes: {:.2} m³", q.slab_volume_m3));
+        });
     }
 
     fn inspector(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::right("inspector")
-            .resizable(true)
-            .default_size(192.0)
-            .size_range(160.0..=240.0)
-            .show(ui, |ui| {
-                ui.heading("Propriedades");
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        if self.tool == Tool::Wall {
-                            ui.strong("Próxima parede");
-                            ui.label("Espessura (m)");
-                            ui.add(
-                                egui::DragValue::new(&mut self.thickness_m)
-                                    .speed(0.01)
-                                    .range(0.05..=2.0),
-                            );
-                            ui.label("Altura (m)");
-                            ui.add(
-                                egui::DragValue::new(&mut self.height_m)
-                                    .speed(0.1)
-                                    .range(0.2..=20.0),
-                            );
-                            ui.separator();
-                        }
-                        if let Some(id) = self.selected_id.clone() {
-                            self.selection_properties(ui, &id);
-                        } else if self.tool != Tool::Wall {
-                            ui.label("Selecione um elemento.");
-                        }
-                    });
-            });
+        ui.heading("Propriedades");
+        if self.tool == Tool::Wall {
+            ui.strong("Próxima parede");
+            ui.label("Espessura (m)");
+            ui.add(
+                egui::DragValue::new(&mut self.thickness_m)
+                    .speed(0.01)
+                    .range(0.05..=2.0),
+            );
+            ui.label("Altura (m)");
+            ui.add(
+                egui::DragValue::new(&mut self.height_m)
+                    .speed(0.1)
+                    .range(0.2..=20.0),
+            );
+            ui.separator();
+        }
+        if let Some(id) = self.selected_id.clone() {
+            self.selection_properties(ui, &id);
+        } else if self.tool != Tool::Wall {
+            ui.label("Selecione um elemento.");
+        }
     }
 
     fn selection_properties(&mut self, ui: &mut egui::Ui, id: &str) {

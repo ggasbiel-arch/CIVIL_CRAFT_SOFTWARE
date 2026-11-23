@@ -46,13 +46,13 @@ O Cargo baixa dependências da internet na primeira compilação. A janela abre 
 - No menu **Arquivo**, use **Novo**, **Exemplo**, **Abrir** e **Salvar**. Informe o caminho `.CCW` no campo ao lado dos comandos de arquivo.
 - A faixa **Modelagem** alterna entre **Paramétrica + visual por nós** e **Livre** no mesmo documento. O primeiro modo reúne as ferramentas de arquitetura e permite consultar as saídas do grafo do componente selecionado. O segundo permite navegar e selecionar. A edição visual dos nós e as ferramentas de geometria livre seguem planejadas.
 - Na paleta **Ferramentas** à esquerda, escolha **Parede** e marque o início e o fim na planta. Em **Propriedades**, o grupo **Próxima parede** define as dimensões para o próximo desenho.
-- O **Navegador BIM** lista pavimentos, elementos e quantitativos brutos. **Propriedades** mostra os dados da seleção e permite alterar a largura da porta. Use os controles do menu **Janelas** para ocultar ou reabrir cada painel.
+- À direita, o **Mapa do projeto** agrupa os elementos por pavimento e reúne os quantitativos brutos. Expanda um pavimento para acessar sua planta ou selecionar uma parede, laje ou componente. A área **Ferramentas** ocupa a lateral esquerda. **Propriedades** mostra os dados da seleção e permite alterar a largura da porta. Use os controles do menu **Janelas** para ocultar ou reabrir cada painel.
 - No menu **Câmeras**, alterne entre **Planta**, **Isometria** e **Duas vistas** e ajuste o zoom. O snap fica em **Ferramentas**. **Duas vistas** distribui a planta e a isometria na horizontal quando há espaço e na vertical quando o centro está estreito. Ao escolher uma ferramenta na isometria, a interface volta à planta.
 
 ### Porta paramétrica
 
 1. Escolha **Porta** e clique na planta para posicionar a extremidade inicial no pavimento ativo. A porta é inserida ao longo do eixo X e selecionada automaticamente.
-2. Para voltar à edição, clique na porta com **Selecionar** ou escolha sua instância no **Navegador BIM**.
+2. Para voltar à edição, clique na porta com **Selecionar** ou escolha sua instância no **Mapa do projeto**.
 3. Informe uma largura de 0,60 a 2,00 m no inspetor e clique em **Aplicar largura**. A planta mostra o vão nominal. A vista isométrica mostra a folha calculada pelo grafo. Com 1,20 m de largura, a folha tem 1,16 m.
 4. Use **Desfazer** e **Refazer** para percorrer as edições da sessão. Salve e reabra o `.CCW` para recuperar as instâncias e seus parâmetros.
 
