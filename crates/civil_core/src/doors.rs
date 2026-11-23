@@ -1,5 +1,5 @@
 use crate::{
-    Project,
+    Element, Project, Wall,
     components::{ComponentDefinition, ComponentInstance},
 };
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,15 @@ const HEIGHT: &str = "altura_m";
 const LEAF_WIDTH: &str = "largura_folha_m";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WallHost {
+    pub wall_id: String,
+    pub distance_m: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PlacedComponent {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<WallHost>,
     pub level_id: String,
     #[serde(flatten)]
     pub instance: ComponentInstance,
@@ -37,20 +45,56 @@ impl Project {
     }
 
     pub fn add_door(&mut self, level_id: &str, [x, y]: [f64; 2]) -> Result<String, String> {
+        self.add_opening(
+            level_id,
+            [x, y],
+            include_str!("../../../samples/porta_parametrica.component.json"),
+            "D",
+        )
+    }
+
+    pub fn add_window(&mut self, wall_id: &str, distance_m: f64) -> Result<String, String> {
+        let wall = self
+            .elements
+            .iter()
+            .find(|e| e.id() == wall_id)
+            .ok_or("Parede inexistente")?;
+        let level = wall.level_id().to_string();
+        let mut proposed = self.clone();
+        let id = proposed.add_opening(
+            &level,
+            [0., 0.],
+            include_str!("../../../samples/janela_parametrica.component.json"),
+            "J",
+        )?;
+        proposed.host_opening(&id, wall_id, distance_m)?;
+        *self = proposed;
+        Ok(id)
+    }
+
+    fn add_opening(
+        &mut self,
+        level_id: &str,
+        [x, y]: [f64; 2],
+        catalog: &str,
+        prefix: &str,
+    ) -> Result<String, String> {
         #[derive(Deserialize)]
         struct CatalogEntry {
             definition: ComponentDefinition,
         }
-        let entry: CatalogEntry = serde_json::from_str(include_str!(
-            "../../../samples/porta_parametrica.component.json"
-        ))
-        .map_err(|error| format!("Catálogo de portas inválido: {error}"))?;
+        let entry: CatalogEntry = serde_json::from_str(catalog)
+            .map_err(|error| format!("Catálogo de portas inválido: {error}"))?;
         let definition = self
             .component_definitions
             .get(&entry.definition.id)
             .unwrap_or(&entry.definition);
-        let id = self.next_id("D");
+        if definition.classification != entry.definition.classification {
+            return Err("Classificação incompatível com o catálogo".into());
+        }
+        let id = self.next_id(prefix);
         let placed = PlacedComponent {
+            host: None,
             level_id: level_id.into(),
             instance: ComponentInstance {
                 id: id.clone(),
@@ -74,25 +118,129 @@ impl Project {
     }
 
     pub fn door_geometry(&self, placed: &PlacedComponent) -> Result<DoorGeometry, String> {
-        door_geometry(
-            self.definition_for(placed)?,
-            &placed.instance,
-            self.level_elevation(&placed.level_id),
-        )
+        let definition = self.definition_for(placed)?;
+        let elevation = self.level_elevation(&placed.level_id);
+        let Some(host) = &placed.host else {
+            return door_geometry(definition, &placed.instance, elevation);
+        };
+        let Some(Element::Wall(wall)) = self.elements.iter().find(|e| e.id() == host.wall_id)
+        else {
+            return Err("Parede hospedeira inexistente".into());
+        };
+        if wall.level_id != placed.level_id {
+            return Err("Pavimentos incompatíveis".into());
+        }
+        definition.validate_instance(&placed.instance)?;
+        let mut instance = placed.instance.clone();
+        let dx = (wall.end[0] - wall.start[0]) / wall.length_m();
+        let dy = (wall.end[1] - wall.start[1]) / wall.length_m();
+        let mid = wall.thickness_m / 2.;
+        let [x, y] = wall.strip(mid, mid, host.distance_m, host.distance_m)[0];
+        instance.transform = [
+            dx, -dy, 0., x, dy, dx, 0., y, 0., 0., 1., 0., 0., 0., 0., 1.,
+        ];
+        let geometry = door_geometry(definition, &instance, elevation)?;
+        let end = host.distance_m + geometry.width_m;
+        if !host.distance_m.is_finite()
+            || host.distance_m < 0.
+            || end > wall.length_m() + 1e-9
+            || geometry.leaf[2][2] - elevation > self.wall_height(wall)? + 1e-9
+        {
+            return Err("O vão ultrapassa os limites da parede".into());
+        }
+        for peer in &self.component_instances {
+            if peer.instance.id == instance.id {
+                continue;
+            }
+            if let Some(other) = &peer.host
+                && other.wall_id == host.wall_id
+            {
+                let width = door_geometry(self.definition_for(peer)?, &peer.instance, 0.)?.width_m;
+                if other.distance_m < end - 1e-9
+                    && host.distance_m < other.distance_m + width - 1e-9
+                {
+                    return Err("Sobreposição de vãos na parede".into());
+                }
+            }
+        }
+        Ok(geometry)
+    }
+
+    pub fn host_opening(&mut self, id: &str, wall_id: &str, distance_m: f64) -> Result<(), String> {
+        let index = self
+            .component_instances
+            .iter()
+            .position(|p| p.instance.id == id)
+            .ok_or("Porta inexistente")?;
+        let wall = self
+            .elements
+            .iter()
+            .find(|e| e.id() == wall_id)
+            .ok_or("Parede inexistente")?;
+        let mut proposed = self.component_instances[index].clone();
+        proposed.level_id = wall.level_id().into();
+        proposed.host = Some(WallHost {
+            wall_id: wall_id.into(),
+            distance_m,
+        });
+        self.door_geometry(&proposed)?;
+        self.component_instances[index] = proposed;
+        Ok(())
+    }
+
+    /// Sorted, non-overlapping (start, end, sill, lintel) intervals in wall coordinates.
+    pub fn openings(&self, wall: &Wall) -> Vec<(f64, f64, f64, f64)> {
+        let mut openings = Vec::new();
+        for placed in &self.component_instances {
+            if let Some(host) = &placed.host
+                && host.wall_id == wall.id
+                && let Ok(g) = self.door_geometry(placed)
+            {
+                openings.push((
+                    host.distance_m,
+                    host.distance_m + g.width_m,
+                    g.leaf[0][2] - self.level_elevation(&wall.level_id),
+                    g.leaf[2][2] - self.level_elevation(&wall.level_id),
+                ));
+            }
+        }
+        openings.sort_by(|a, b| a.0.total_cmp(&b.0));
+        openings
     }
 
     pub fn set_door_width(&mut self, id: &str, width_m: f64) -> Result<bool, String> {
+        self.set_opening_parameter(id, WIDTH, width_m)
+    }
+
+    pub fn set_opening_parameter(
+        &mut self,
+        id: &str,
+        key: &str,
+        value: f64,
+    ) -> Result<bool, String> {
         let index = self
             .component_instances
             .iter()
             .position(|placed| placed.instance.id == id)
             .ok_or_else(|| format!("Instância inexistente: {id}"))?;
         let current = &self.component_instances[index];
-        if self.door_geometry(current)?.width_m == width_m {
+        let definition = self.definition_for(current)?;
+        let parameter = definition
+            .parameters
+            .get(key)
+            .ok_or("Parâmetro de esquadria inexistente")?;
+        if current
+            .instance
+            .overrides
+            .get(key)
+            .copied()
+            .unwrap_or(parameter.value)
+            == value
+        {
             return Ok(false);
         }
         let mut proposed = current.clone();
-        proposed.instance.overrides.insert(WIDTH.into(), width_m);
+        proposed.instance.overrides.insert(key.into(), value);
         self.door_geometry(&proposed)?;
         self.component_instances[index] = proposed;
         Ok(true)
@@ -104,7 +252,7 @@ fn door_geometry(
     instance: &ComponentInstance,
     elevation: f64,
 ) -> Result<DoorGeometry, String> {
-    if definition.classification != "IfcDoor" {
+    if !matches!(definition.classification.as_str(), "IfcDoor" | "IfcWindow") {
         return Err("O componente não é uma porta".into());
     }
     let outputs = definition.evaluate(instance)?;
@@ -131,8 +279,17 @@ fn door_geometry(
         return Err("Dimensões da porta inválidas".into());
     }
     let gap = (width - leaf_width) / 2.0;
+    let sill = if definition.classification == "IfcWindow" {
+        length("peitoril_m")?
+    } else {
+        0.
+    };
+    if sill < 0. {
+        return Err("Peitoril negativo".into());
+    }
     let t = instance.transform;
     let point = |x: f64, z: f64| {
+        let z = z + sill;
         [
             t[0] * x + t[2] * z + t[3],
             t[4] * x + t[6] * z + t[7],

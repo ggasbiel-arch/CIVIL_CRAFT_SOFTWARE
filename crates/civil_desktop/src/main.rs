@@ -1,7 +1,8 @@
 mod ifc;
 mod normas;
 mod nr;
-use civil_core::{Element, Project};
+mod wall_editor;
+use civil_core::{Element, LayerRole, Project, ReferenceAxis, Wall, WallFace, WallLayer};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Sense, Shape, Stroke, Vec2};
 use std::{fs, io::Write, path::Path};
 
@@ -10,6 +11,7 @@ enum Tool {
     Select,
     Wall,
     Door,
+    Window,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -25,14 +27,15 @@ enum ModelingMode {
     Free,
 }
 
-const TOOLS: [(Tool, &str); 3] = [
+const TOOLS: [(Tool, &str); 4] = [
     (Tool::Select, "Selecionar"),
     (Tool::Wall, "Parede"),
     (Tool::Door, "Porta"),
+    (Tool::Window, "Janela"),
 ];
 
 struct StudioApp {
-    pinned_tools: [bool; 3],
+    pinned_tools: [bool; 4],
     show_grid: bool,
     outlines: bool,
     nr: nr::Biblioteca,
@@ -44,9 +47,16 @@ struct StudioApp {
     view: View,
     show_navigator: bool,
     show_inspector: bool,
+    wall_editor: Option<Wall>,
+    geometry_cache: civil_core::WallPlanCache,
+    plan_cache: Option<(String, Vec<WallFace>)>,
+    chain_walls: bool,
     pending_start: Option<[f64; 2]>,
     selected_id: Option<String>,
     active_level: String,
+    level_draft: Option<(String, f64)>,
+    opening_dims: Option<(String, f64, f64)>,
+    host_draft: Option<(String, String, f64)>,
     door_width_draft: Option<(String, String)>,
     thickness_m: f64,
     height_m: f64,
@@ -61,7 +71,7 @@ struct StudioApp {
 impl Default for StudioApp {
     fn default() -> Self {
         Self {
-            pinned_tools: [true, false, false],
+            pinned_tools: [true, false, false, false],
             show_grid: true,
             outlines: false,
             nr: Default::default(),
@@ -73,9 +83,16 @@ impl Default for StudioApp {
             view: View::Plan,
             show_navigator: true,
             show_inspector: true,
+            wall_editor: None,
+            geometry_cache: Default::default(),
+            plan_cache: None,
+            chain_walls: false,
             pending_start: None,
             selected_id: None,
             active_level: "P0".into(),
+            level_draft: None,
+            opening_dims: None,
+            host_draft: None,
             door_width_draft: None,
             thickness_m: 0.20,
             height_m: 2.80,
@@ -91,6 +108,11 @@ impl Default for StudioApp {
 
 impl StudioApp {
     fn save_snapshot(&mut self) {
+        self.opening_dims = None;
+        self.host_draft = None;
+        self.level_draft = None;
+        self.plan_cache = None;
+        self.wall_editor = None;
         if self.undo_stack.len() >= 50 {
             self.undo_stack.remove(0);
         }
@@ -117,6 +139,11 @@ impl StudioApp {
     }
 
     fn reset_after_history(&mut self) {
+        self.opening_dims = None;
+        self.host_draft = None;
+        self.level_draft = None;
+        self.plan_cache = None;
+        self.wall_editor = None;
         if !self
             .project
             .levels
@@ -143,10 +170,44 @@ impl StudioApp {
         }
     }
 
+    fn nearest_host(&self, point: [f64; 2]) -> Option<(String, f64)> {
+        self.project
+            .elements
+            .iter()
+            .filter_map(|element| {
+                let Element::Wall(w) = element else {
+                    return None;
+                };
+                if w.level_id != self.active_level {
+                    return None;
+                }
+                let mid = w.thickness_m / 2.;
+                let a = w.strip(mid, mid, 0., w.length_m())[0];
+                let dx = (w.end[0] - w.start[0]) / w.length_m();
+                let dy = (w.end[1] - w.start[1]) / w.length_m();
+                let along = (point[0] - a[0]) * dx + (point[1] - a[1]) * dy;
+                let across = ((point[1] - a[1]) * dx - (point[0] - a[0]) * dy).abs();
+                (along >= 0. && along <= w.length_m() && across <= mid + 0.10).then_some((
+                    across,
+                    w.id.clone(),
+                    along,
+                ))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)))
+            .map(|(_, id, d)| (id, d))
+    }
     fn insert_door(&mut self, point: [f64; 2]) {
         let before = self.project.clone();
-        match self.project.add_door(&self.active_level, point) {
+        let mut proposed = self.project.clone();
+        let result = proposed.add_door(&self.active_level, point).and_then(|id| {
+            if let Some((wall, distance)) = self.nearest_host(point) {
+                proposed.host_opening(&id, &wall, distance)?;
+            }
+            Ok::<_, String>(id)
+        });
+        match result {
             Ok(id) => {
+                self.project = proposed;
                 self.save_snapshot_from(before);
                 self.selected_id = Some(id);
                 self.door_width_draft = None;
@@ -162,7 +223,7 @@ impl StudioApp {
         match self.project.set_door_width(id, width_m) {
             Ok(true) => {
                 self.save_snapshot_from(before);
-                self.status = "Largura da porta atualizada".into();
+                self.status = "Largura do vão atualizada".into();
             }
             Ok(false) => {}
             Err(error) => self.status = error,
@@ -182,12 +243,124 @@ impl StudioApp {
         let Ok(geometry) = self.project.door_geometry(placed) else {
             return;
         };
+        let def = &self.project.component_definitions[&placed.instance.definition_id];
+        let window = def.classification == "IfcWindow";
+        if self
+            .opening_dims
+            .as_ref()
+            .is_none_or(|(owner, _, _)| owner != id)
+        {
+            let value = |key: &str| {
+                placed
+                    .instance
+                    .overrides
+                    .get(key)
+                    .copied()
+                    .or_else(|| def.parameters.get(key).map(|p| p.value))
+                    .unwrap_or_default()
+            };
+            self.opening_dims = Some((id.into(), value("altura_m"), value("peitoril_m")));
+        }
+        if let Some((_, height, sill)) = &mut self.opening_dims {
+            ui.add(
+                egui::DragValue::new(height)
+                    .prefix("Altura ")
+                    .suffix(" m")
+                    .speed(0.01),
+            );
+            let mut edit = ui
+                .button("Aplicar altura")
+                .clicked()
+                .then_some(("altura_m", *height));
+            if window {
+                ui.add(
+                    egui::DragValue::new(sill)
+                        .prefix("Peitoril ")
+                        .suffix(" m")
+                        .speed(0.01),
+                );
+                if ui.button("Aplicar peitoril").clicked() {
+                    edit = Some(("peitoril_m", *sill));
+                }
+            }
+            if let Some((key, value)) = edit {
+                let before = self.project.clone();
+                match self.project.set_opening_parameter(id, key, value) {
+                    Ok(true) => {
+                        self.save_snapshot_from(before);
+                        self.status = "Vão atualizado".into();
+                    }
+                    Ok(false) => {}
+                    Err(error) => self.status = error,
+                }
+                return;
+            }
+        }
+        let first_wall = self
+            .project
+            .elements
+            .iter()
+            .find(|e| matches!(e, Element::Wall(_)) && e.level_id() == placed.level_id);
+        if let Some(first) = first_wall {
+            if self
+                .host_draft
+                .as_ref()
+                .is_none_or(|(owner, _, _)| owner != id)
+            {
+                let (wall, distance) = placed
+                    .host
+                    .as_ref()
+                    .map_or((first.id(), 0.), |h| (h.wall_id.as_str(), h.distance_m));
+                self.host_draft = Some((id.into(), wall.into(), distance));
+            }
+            if let Some((_, wall, distance)) = &mut self.host_draft {
+                egui::ComboBox::from_label("Hospedeira")
+                    .selected_text(wall.as_str())
+                    .show_ui(ui, |ui| {
+                        for element in &self.project.elements {
+                            if let Element::Wall(w) = element {
+                                ui.selectable_value(
+                                    wall,
+                                    w.id.clone(),
+                                    format!("{} · {}", w.level_id, w.id),
+                                );
+                            }
+                        }
+                    });
+                ui.add(
+                    egui::DragValue::new(distance)
+                        .speed(0.05)
+                        .suffix(" m do início"),
+                );
+                if ui.button("Aplicar posição").clicked() {
+                    let before = self.project.clone();
+                    match self.project.host_opening(id, wall, *distance) {
+                        Ok(()) => {
+                            if self.project != before {
+                                self.active_level = self
+                                    .project
+                                    .component_instances
+                                    .iter()
+                                    .find(|p| p.instance.id == id)
+                                    .unwrap()
+                                    .level_id
+                                    .clone();
+                                self.save_snapshot_from(before);
+                            }
+                            self.status = "Hospedagem atualizada".into();
+                        }
+                        Err(error) => self.status = error,
+                    }
+                    return;
+                }
+            }
+        }
         let draft = &mut self.door_width_draft;
         if draft.as_ref().is_none_or(|(owner, _)| owner != id) {
             *draft = Some((id.into(), geometry.width_m.to_string()));
         }
         if let Some((_, text)) = draft {
-            ui.label("Largura da porta (m)");
+            ui.label("Largura do vão (m)");
             ui.add(egui::TextEdit::singleline(text).desired_width(72.0));
             if ui.button("Aplicar largura").clicked() {
                 match text.trim().replace(',', ".").parse() {
@@ -266,7 +439,10 @@ impl StudioApp {
     fn draw_plan(&mut self, ui: &mut egui::Ui) {
         ui.label(match self.tool {
             Tool::Wall => "Marque o início e o fim da parede.",
-            Tool::Door => "Clique para posicionar a porta no pavimento ativo.",
+            Tool::Door => {
+                "Clique na parede para hospedar a porta ou fora dela para uma porta independente."
+            }
+            Tool::Window => "Clique na parede para inserir a janela.",
             Tool::Select => "Clique em um elemento para selecioná-lo.",
         });
         let available = ui.available_size();
@@ -323,46 +499,40 @@ impl StudioApp {
                 );
             }
         }
-        let (slabs, walls) = (
-            self.project
-                .elements
-                .iter()
-                .filter(|element| matches!(element, Element::Slab(_))),
-            self.project
-                .elements
-                .iter()
-                .filter(|element| matches!(element, Element::Wall(_))),
-        );
-        for element in slabs.chain(walls) {
-            if element.level_id() != self.active_level {
-                continue;
+        for element in &self.project.elements {
+            if let Element::Slab(slab) = element
+                && slab.level_id == self.active_level
+            {
+                painter.add(self.model_polygon(
+                    slab.polygon.iter().copied().map(world_to_screen).collect(),
+                    Color32::from_rgb(54, 65, 74),
+                    Stroke::new(1.2, Color32::from_rgb(100, 119, 132)),
+                ));
             }
-            match element {
-                Element::Slab(slab) => {
-                    let polygon: Vec<Pos2> =
-                        slab.polygon.iter().copied().map(world_to_screen).collect();
-                    painter.add(self.model_polygon(
-                        polygon,
-                        Color32::from_rgb(54, 65, 74),
-                        Stroke::new(1.2, Color32::from_rgb(100, 119, 132)),
-                    ));
-                }
-                Element::Wall(wall) => {
-                    let polygon: Vec<Pos2> =
-                        wall.footprint().into_iter().map(world_to_screen).collect();
-                    let selected = self.selected_id.as_deref() == Some(wall.id.as_str());
-                    let fill = if selected {
-                        Color32::from_rgb(226, 163, 64)
-                    } else {
-                        Color32::from_rgb(168, 201, 201)
-                    };
-                    painter.add(self.model_polygon(
-                        polygon,
-                        fill,
-                        Stroke::new(1.0, Color32::from_rgb(9, 22, 27)),
-                    ));
-                }
-            }
+        }
+        if self
+            .plan_cache
+            .as_ref()
+            .is_none_or(|(level, _)| level != &self.active_level)
+        {
+            self.plan_cache = Some((
+                self.active_level.clone(),
+                self.geometry_cache
+                    .update(&self.project, &self.active_level),
+            ));
+        }
+        let faces = &self.plan_cache.as_ref().unwrap().1;
+        for face in faces {
+            let fill = if self.selected_id.as_deref() == Some(&face.wall_id) {
+                Color32::GOLD
+            } else {
+                layer_color(face.layer.role)
+            };
+            painter.add(self.model_polygon(
+                face.polygon.iter().copied().map(world_to_screen).collect(),
+                fill,
+                Stroke::new(0.7, Color32::from_rgb(25, 39, 44)),
+            ));
         }
         let mut door_hit = None;
         for placed in &self.project.component_instances {
@@ -377,6 +547,24 @@ impl StudioApp {
                     Color32::LIGHT_BLUE
                 };
                 painter.line_segment([a, b], Stroke::new(4.0, color));
+                let v = b - a;
+                if self.project.component_definitions[&placed.instance.definition_id].classification
+                    == "IfcWindow"
+                {
+                    let n = v.rot90().normalized() * 2.;
+                    painter.line_segment([a + n, b + n], Stroke::new(1., color));
+                    painter.line_segment([a - n, b - n], Stroke::new(1., color));
+                } else {
+                    let tip = a + v.rot90();
+                    painter.line_segment([a, tip], Stroke::new(1., color));
+                    let arc = (0..=16)
+                        .map(|i| {
+                            let angle = std::f32::consts::FRAC_PI_2 * (i as f32) / 16.;
+                            a + v * angle.cos() + v.rot90() * angle.sin()
+                        })
+                        .collect();
+                    painter.add(Shape::line(arc, Stroke::new(0.8, color)));
+                }
                 painter.circle_filled(a, 3.0, color);
                 painter.circle_filled(b, 3.0, color);
                 if let Some(pointer) = response.interact_pointer_pos() {
@@ -413,6 +601,43 @@ impl StudioApp {
             Color32::from_rgb(203, 218, 224),
         );
 
+        if self.tool == Tool::Select
+            && let Some(Element::Wall(wall)) = self
+                .project
+                .elements
+                .iter()
+                .find(|e| Some(e.id()) == self.selected_id.as_deref())
+        {
+            for (index, point) in [wall.start, wall.end].into_iter().enumerate() {
+                let position = world_to_screen(point);
+                let handle = ui.interact(
+                    egui::Rect::from_center_size(position, Vec2::splat(12.)),
+                    ui.scope_id().with((&wall.id, index)),
+                    Sense::drag(),
+                );
+                painter.circle_stroke(position, 4., Stroke::new(1.5, Color32::GOLD));
+                if (handle.dragged() || handle.drag_stopped())
+                    && let Some(pointer) = handle.interact_pointer_pos()
+                {
+                    let target = screen_to_world(pointer);
+                    let other = if index == 0 { wall.end } else { wall.start };
+                    painter.line_segment(
+                        [world_to_screen(other), world_to_screen(target)],
+                        Stroke::new(2., Color32::GOLD),
+                    );
+                    if handle.drag_stopped() {
+                        let mut draft = wall.clone();
+                        if index == 0 {
+                            draft.start = target;
+                        } else {
+                            draft.end = target;
+                        }
+                        self.apply_wall(draft);
+                        return;
+                    }
+                }
+            }
+        }
         if response.clicked()
             && let Some(pointer) = response.interact_pointer_pos()
         {
@@ -431,6 +656,7 @@ impl StudioApp {
                             Ok(id) => {
                                 self.save_snapshot_from(snapshot);
                                 self.selected_id = Some(id);
+                                self.pending_start = self.chain_walls.then_some(world);
                                 self.status = "Parede criada".into();
                             }
                             Err(err) => self.status = err,
@@ -441,36 +667,65 @@ impl StudioApp {
                     }
                 }
                 Tool::Door => self.insert_door(world),
+                Tool::Window => {
+                    let before = self.project.clone();
+                    let result = self
+                        .nearest_host(world)
+                        .ok_or_else(|| "Selecione uma parede para a janela".to_string())
+                        .and_then(|(id, d)| self.project.add_window(&id, d));
+                    match result {
+                        Ok(id) => {
+                            self.save_snapshot_from(before);
+                            self.selected_id = Some(id);
+                            self.tool = Tool::Select;
+                            self.status = "Janela inserida".into();
+                        }
+                        Err(err) => self.status = err,
+                    }
+                }
                 Tool::Select => {
                     self.door_width_draft = None;
                     if let Some((_, id)) = door_hit {
                         self.selected_id = Some(id);
                         return;
                     }
-                    let mut closest: Option<(f32, String)> = None;
-                    for element in &self.project.elements {
-                        if let Element::Wall(wall) = element {
-                            if wall.level_id != self.active_level {
-                                continue;
+                    self.selected_id = faces
+                        .iter()
+                        .rev()
+                        .find(|face| {
+                            let points: Vec<_> =
+                                face.polygon.iter().copied().map(world_to_screen).collect();
+                            let mut positive = false;
+                            let mut negative = false;
+                            for i in 0..points.len() {
+                                let edge = points[(i + 1) % points.len()] - points[i];
+                                let v = pointer - points[i];
+                                let cross = edge.x * v.y - edge.y * v.x;
+                                positive |= cross > 0.;
+                                negative |= cross < 0.;
+                                if segment_distance(
+                                    pointer,
+                                    points[i],
+                                    points[(i + 1) % points.len()],
+                                ) < 3.
+                                {
+                                    return true;
+                                }
                             }
-                            let dist = segment_distance(
-                                pointer,
-                                world_to_screen(wall.start),
-                                world_to_screen(wall.end),
-                            );
-                            if dist < 14.0 && closest.as_ref().is_none_or(|(best, _)| dist < *best)
-                            {
-                                closest = Some((dist, wall.id.clone()));
-                            }
-                        }
-                    }
-                    self.selected_id = closest.map(|(_, id)| id);
+                            !(positive && negative)
+                        })
+                        .map(|f| f.wall_id.clone());
                 }
             }
         }
     }
 
     fn save_snapshot_from(&mut self, before: Project) {
+        self.opening_dims = None;
+        self.host_draft = None;
+        self.level_draft = None;
+        self.plan_cache = None;
+        self.wall_editor = None;
         if self.undo_stack.len() >= 50 {
             self.undo_stack.remove(0);
         }
@@ -536,29 +791,44 @@ impl StudioApp {
         for element in &self.project.elements {
             if let Element::Wall(wall) = element {
                 let z0 = self.project.level_elevation(&wall.level_id);
-                let z1 = z0 + wall.height_m;
-                let footprint = wall.footprint();
-                let base: Vec<Pos2> = footprint.iter().map(|p| iso([p[0], p[1], z0])).collect();
-                let top: Vec<Pos2> = footprint.iter().map(|p| iso([p[0], p[1], z1])).collect();
-                let selected = self.selected_id.as_deref() == Some(wall.id.as_str());
-                let fill = if selected {
-                    Color32::from_rgb(196, 147, 79)
-                } else {
-                    Color32::from_rgb(140, 162, 174)
-                };
-                for i in 0..4 {
-                    let next = (i + 1) % 4;
-                    painter.add(self.model_polygon(
-                        vec![base[i], base[next], top[next], top[i]],
-                        fill,
-                        Stroke::new(0.8, Color32::from_rgb(38, 54, 66)),
-                    ));
+                let height = self.project.wall_height(wall).unwrap_or(wall.height_m);
+                let mut spans = Vec::new();
+                let mut start = 0.;
+                for (a, b, sill, lintel) in self.project.openings(wall) {
+                    spans.push((start, a, 0., height));
+                    spans.push((a, b, 0., sill));
+                    spans.push((a, b, lintel, height));
+                    start = b;
                 }
-                painter.add(self.model_polygon(
-                    top,
-                    Color32::from_rgb(190, 212, 220),
-                    Stroke::new(1.1, Color32::from_rgb(42, 61, 70)),
-                ));
+                spans.push((start, wall.length_m(), 0., height));
+                let mut offset = 0.;
+                for layer in wall.effective_layers() {
+                    let next = offset + layer.thickness_m;
+                    let fill = if self.selected_id.as_deref() == Some(&wall.id) {
+                        Color32::GOLD
+                    } else {
+                        layer_color(layer.role)
+                    };
+                    for &(a, b, bottom, height) in &spans {
+                        if a >= b || bottom >= height {
+                            continue;
+                        }
+                        let footprint = wall.strip(offset, next, a, b);
+                        let base = footprint.map(|p| iso([p[0], p[1], z0 + bottom]));
+                        let top = footprint.map(|p| iso([p[0], p[1], z0 + height]));
+                        let stroke = Stroke::new(0.8, Color32::from_rgb(38, 54, 66));
+                        for i in 0..4 {
+                            let j = (i + 1) % 4;
+                            painter.add(self.model_polygon(
+                                vec![base[i], base[j], top[j], top[i]],
+                                fill,
+                                stroke,
+                            ));
+                        }
+                        painter.add(self.model_polygon(top.to_vec(), fill, stroke));
+                    }
+                    offset = next;
+                }
             }
         }
         for placed in &self.project.component_instances {
@@ -574,6 +844,14 @@ impl StudioApp {
                 ));
             }
         }
+    }
+}
+
+fn layer_color(role: LayerRole) -> Color32 {
+    match role {
+        LayerRole::Structure => Color32::from_rgb(168, 201, 201),
+        LayerRole::Finish => Color32::from_rgb(207, 181, 154),
+        LayerRole::Insulation => Color32::from_rgb(201, 196, 133),
     }
 }
 
@@ -654,6 +932,7 @@ impl StudioApp {
                         (Tool::Select, "Selecionar"),
                         (Tool::Wall, "Parede"),
                         (Tool::Door, "Porta"),
+                        (Tool::Window, "Janela"),
                     ] {
                         if tool != Tool::Select && self.modeling_mode == ModelingMode::Free {
                             continue;
@@ -790,6 +1069,7 @@ impl StudioApp {
                         .show(ui, |ui| {
                             self.palette_tool(ui, Tool::Wall, "Parede");
                             self.palette_tool(ui, Tool::Door, "Porta");
+                            self.palette_tool(ui, Tool::Window, "Janela");
                         });
                 } else {
                     ui.strong("Geometria");
@@ -811,6 +1091,7 @@ impl StudioApp {
                 });
         }
 
+        self.wall_dialog(ui.ctx());
         let canvas = egui::CentralPanel::default().show(ui, |ui| match self.view {
             View::Plan => self.draw_plan(ui),
             View::Isometric => self.draw_iso(ui),
@@ -903,6 +1184,60 @@ impl StudioApp {
         ui.text_edit_singleline(&mut self.project.name);
         ui.separator();
         ui.strong("Pavimentos");
+        if ui.button("Adicionar pavimento").clicked() {
+            let mut number = self.project.levels.len();
+            while self
+                .project
+                .levels
+                .iter()
+                .any(|l| l.id == format!("P{number}"))
+            {
+                number += 1;
+            }
+            let elevation = self
+                .project
+                .levels
+                .iter()
+                .map(|l| l.elevation_m)
+                .fold(f64::NEG_INFINITY, f64::max)
+                + 3.;
+            self.save_snapshot();
+            self.project.levels.push(civil_core::Level {
+                id: format!("P{number}"),
+                name: format!("Pavimento {number}"),
+                elevation_m: elevation,
+            });
+        }
+        if self
+            .level_draft
+            .as_ref()
+            .is_none_or(|(id, _)| id != &self.active_level)
+        {
+            self.level_draft = Some((
+                self.active_level.clone(),
+                self.project.level_elevation(&self.active_level),
+            ));
+        }
+        if let Some((id, z)) = &mut self.level_draft {
+            let before_z = self.project.level_elevation(id);
+            ui.add(
+                egui::DragValue::new(z)
+                    .prefix(format!("Cota {id} "))
+                    .suffix(" m")
+                    .speed(0.05),
+            );
+            if ui
+                .add_enabled(*z != before_z, egui::Button::new("Aplicar cota"))
+                .clicked()
+            {
+                let before = self.project.clone();
+                match self.project.set_level_elevation(id, *z) {
+                    Ok(true) => self.save_snapshot_from(before),
+                    Ok(false) => {}
+                    Err(error) => self.status = error,
+                }
+            }
+        }
         for level in &self.project.levels {
             egui::CollapsingHeader::new(format!("{}  •  {:.2} m", level.name, level.elevation_m))
                 .id_salt(("project_level", &level.id))
@@ -969,6 +1304,10 @@ impl StudioApp {
         ui.separator();
         ui.collapsing("Quantitativos brutos", |ui| {
             let q = self.project.quantities();
+            ui.label(format!(
+                "Área dos vãos hospedados: {:.2} m²",
+                q.hosted_opening_area_m2
+            ));
             ui.label(format!("Paredes: {:.2} m", q.wall_length_m));
             ui.label(format!("Área de paredes: {:.2} m²", q.wall_gross_area_m2));
             ui.label(format!(
@@ -984,6 +1323,7 @@ impl StudioApp {
         ui.heading("Propriedades");
         if self.tool == Tool::Wall {
             ui.strong("Próxima parede");
+            ui.checkbox(&mut self.chain_walls, "Em sequência");
             ui.label("Espessura (m)");
             ui.add(
                 egui::DragValue::new(&mut self.thickness_m)
@@ -1017,7 +1357,15 @@ impl StudioApp {
                     ui.strong(format!("Parede {id}"));
                     ui.label(format!("Comprimento: {:.2} m", wall.length_m()));
                     ui.label(format!("Espessura: {:.2} m", wall.thickness_m));
-                    ui.label(format!("Altura: {:.2} m", wall.height_m));
+                    ui.label(format!(
+                        "Altura: {:.2} m",
+                        self.project.wall_height(wall).unwrap_or(wall.height_m)
+                    ));
+                    if ui.button("Editar parede…").clicked() {
+                        let mut draft = wall.clone();
+                        draft.layers = wall.effective_layers();
+                        self.wall_editor = Some(draft);
+                    }
                 }
                 Element::Slab(slab) => {
                     ui.strong(format!("Laje {id}"));
@@ -1050,6 +1398,16 @@ impl StudioApp {
     }
 
     fn delete_element(&mut self, id: &str) {
+        if self
+            .project
+            .component_instances
+            .iter()
+            .any(|p| p.host.as_ref().is_some_and(|h| h.wall_id == id))
+        {
+            self.status =
+                "Remova ou transfira as esquadrias hospedadas antes de excluir a parede".into();
+            return;
+        }
         self.save_snapshot();
         self.project.elements.retain(|element| element.id() != id);
         self.project
@@ -1249,6 +1607,39 @@ mod tests {
         assert_eq!(fs::read_to_string(legacy).unwrap(), source);
         let saved: Project = serde_json::from_slice(&fs::read(ccw).unwrap()).unwrap();
         assert_eq!(saved, app.project);
+    }
+
+    #[test]
+    fn hosted_wall_edits_round_trip_in_editor_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = StudioApp {
+            project: serde_json::from_str(include_str!("../../../samples/oficina_paredes.CCW"))
+                .unwrap(),
+            file_path: dir.path().join("paredes.CCW").display().to_string(),
+            ..Default::default()
+        };
+        let original = app.project.clone();
+        let Element::Wall(mut w) = app.project.elements[0].clone() else {
+            panic!()
+        };
+        w.start[1] -= 1.;
+        w.layers[0].thickness_m = 0.25;
+        assert!(app.apply_wall(w));
+        let edited = app.project.clone();
+        assert_ne!(edited.wall_plan("P0"), original.wall_plan("P0"));
+        app.undo();
+        assert_eq!(app.project, original);
+        app.redo();
+        assert_eq!(app.project, edited);
+        app.delete_element("W1");
+        assert_eq!(app.project, edited);
+        app.delete_element("D1");
+        assert_ne!(app.project.wall_plan("P0"), edited.wall_plan("P0"));
+        app.undo();
+        app.save_file();
+        app.replace_project(Project::default());
+        app.open_file();
+        assert_eq!(app.project, edited);
     }
 
     #[test]

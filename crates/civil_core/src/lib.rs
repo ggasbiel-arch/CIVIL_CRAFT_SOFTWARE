@@ -1,16 +1,28 @@
 //! Projeto 2 — núcleo paramétrico inicial (não contém um kernel B-Rep).
 pub mod components;
 mod doors;
+mod walls;
 use components::ComponentDefinition;
 pub use doors::{DoorGeometry, PlacedComponent};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+pub use walls::{LayerRole, ReferenceAxis, WallFace, WallLayer, WallPlanCache};
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
+
+fn migrate_version<'de, D: serde::Deserializer<'de>>(reader: D) -> Result<u32, D::Error> {
+    let version = u32::deserialize(reader)?;
+    Ok(if version == 1 {
+        SCHEMA_VERSION
+    } else {
+        version
+    })
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Project {
+    #[serde(deserialize_with = "migrate_version")]
     pub schema_version: u32,
     pub name: String,
     pub levels: Vec<Level>,
@@ -37,6 +49,14 @@ pub enum Element {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Wall {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<WallLayer>,
+    #[serde(default)]
+    pub axis: ReferenceAxis,
+    #[serde(default)]
+    pub offset_m: f64,
+    #[serde(default)]
+    pub top_level_id: Option<String>,
     pub id: String,
     pub level_id: String,
     pub start: [f64; 2],
@@ -53,8 +73,9 @@ pub struct Slab {
     pub thickness_m: f64,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
 pub struct Quantities {
+    pub hosted_opening_area_m2: f64,
     pub wall_length_m: f64,
     pub wall_gross_area_m2: f64,
     pub wall_gross_volume_m3: f64,
@@ -82,17 +103,7 @@ impl Wall {
         (self.end[0] - self.start[0]).hypot(self.end[1] - self.start[1])
     }
     pub fn footprint(&self) -> [[f64; 2]; 4] {
-        let dx = self.end[0] - self.start[0];
-        let dy = self.end[1] - self.start[1];
-        let length = self.length_m().max(1e-9);
-        let nx = -dy / length * self.thickness_m * 0.5;
-        let ny = dx / length * self.thickness_m * 0.5;
-        [
-            [self.start[0] + nx, self.start[1] + ny],
-            [self.end[0] + nx, self.end[1] + ny],
-            [self.end[0] - nx, self.end[1] - ny],
-            [self.start[0] - nx, self.start[1] - ny],
-        ]
+        self.strip(0., self.thickness_m, 0., self.length_m())
     }
 }
 
@@ -185,6 +196,10 @@ impl Project {
         let wall = Wall {
             id: self.next_id("W"),
             level_id: level_id.to_owned(),
+            layers: Vec::new(),
+            axis: ReferenceAxis::Center,
+            offset_m: 0.,
+            top_level_id: None,
             start,
             end,
             thickness_m,
@@ -259,7 +274,10 @@ impl Project {
                 return Err(format!("Pavimento não encontrado: {}", element.level_id()));
             }
             match element {
-                Element::Wall(w) => validate_wall(w)?,
+                Element::Wall(w) => {
+                    validate_wall(w)?;
+                    self.wall_height(w)?;
+                }
                 Element::Slab(s) => validate_slab(s)?,
             }
         }
@@ -277,7 +295,9 @@ impl Project {
                 return Err(format!("ID de instância inválido ou repetido: {id}"));
             }
             let definition = self.definition_for(placed)?;
-            if definition.classification == "IfcDoor" {
+            if placed.host.is_some()
+                || matches!(definition.classification.as_str(), "IfcDoor" | "IfcWindow")
+            {
                 self.door_geometry(placed)?;
             } else if definition.graph.is_some() {
                 definition.evaluate(&placed.instance)?;
@@ -295,14 +315,23 @@ impl Project {
                 Element::Wall(wall) => {
                     let length = wall.length_m();
                     result.wall_length_m += length;
-                    result.wall_gross_area_m2 += length * wall.height_m;
-                    result.wall_gross_volume_m3 += length * wall.height_m * wall.thickness_m;
+                    result.wall_gross_area_m2 +=
+                        length * self.wall_height(wall).unwrap_or(wall.height_m);
+                    result.wall_gross_volume_m3 +=
+                        length * self.wall_height(wall).unwrap_or(wall.height_m) * wall.thickness_m;
                 }
                 Element::Slab(slab) => {
                     let area = slab.area_m2();
                     result.slab_area_m2 += area;
                     result.slab_volume_m3 += area * slab.thickness_m;
                 }
+            }
+        }
+        for placed in &self.component_instances {
+            if placed.host.is_some()
+                && let Ok(g) = self.door_geometry(placed)
+            {
+                result.hosted_opening_area_m2 += g.width_m * (g.leaf[2][2] - g.leaf[0][2]);
             }
         }
         result
@@ -313,7 +342,10 @@ fn valid_xy(point: [f64; 2]) -> bool {
     point.iter().all(|coord| coord.is_finite())
 }
 fn validate_wall(wall: &Wall) -> Result<(), String> {
-    if wall.id.trim().is_empty()
+    wall.validate_layers()?;
+    if !wall.length_m().is_finite()
+        || !wall.offset_m.is_finite()
+        || wall.id.trim().is_empty()
         || !valid_xy(wall.start)
         || !valid_xy(wall.end)
         || !wall.thickness_m.is_finite()
