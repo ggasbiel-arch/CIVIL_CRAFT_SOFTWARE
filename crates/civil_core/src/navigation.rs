@@ -227,10 +227,10 @@ pub struct Schedule {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PublishFormat { Json, Csv }
+pub enum PublishFormat { Json, Csv, Pdf }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PublishSource { SavedView, Schedule }
+pub enum PublishSource { SavedView, Schedule, Sheet }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PublishItem {
     pub id: String,
@@ -252,12 +252,14 @@ pub struct Workspace {
     pub saved_views: Vec<SavedView>,
     pub schedules: Vec<Schedule>,
     pub publisher_sets: Vec<PublisherSet>,
+    /// Linked layouts/paper sheets, persisted with the BIM project.
+    pub sheets: Vec<crate::documentation::Sheet>,
     pub next_id: u64,
 }
 impl Default for Workspace {
     fn default() -> Self {
         Self { camera: Camera::default(), viewpoints: vec![], saved_views: vec![],
-            schedules: vec![], publisher_sets: vec![], next_id: 1 }
+            schedules: vec![], publisher_sets: vec![], sheets: vec![], next_id: 1 }
     }
 }
 impl Workspace {
@@ -339,8 +341,19 @@ impl Workspace {
                 let found = match item.source {
                     PublishSource::SavedView => self.saved_views.iter().any(|v| v.id == item.source_id),
                     PublishSource::Schedule => self.schedules.iter().any(|s| s.id == item.source_id),
+                    PublishSource::Sheet => self.sheets.iter().any(|s|s.id == item.source_id),
                 };
                 if !found { return Err("Fonte do publicador não encontrada".into()); }
+            }
+        }
+        let mut sheet_ids = HashSet::new();
+        for sheet in &self.sheets {
+            sheet.validate()?;
+            if !sheet_ids.insert(sheet.id.as_str()) {return Err("ID de prancha repetido".into());}
+            for place in &sheet.placements {
+                if !self.saved_views.iter().any(|v|v.id==place.saved_view_id) {
+                    return Err("Vista de prancha inexistente".into());
+                }
             }
         }
         Ok(())
