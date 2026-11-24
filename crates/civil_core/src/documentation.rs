@@ -210,11 +210,20 @@ impl Sheet {
 fn pdf_literal(text:&str)->String {
     let mut result=String::from("(");
     for c in text.chars() {
-        let b=match c as u32 {
-            0..=255 => c as u8,
-            0x2013|0x2014 => b'-',
-            0x2018|0x2019=>b'\'',
-            0x201C|0x201D=>b'"',
+        // Base-14 Helvetica has no embedded Unicode font; transliterate
+        // Latin accents rather than writing UTF-8 bytes as WinAnsi PDF text.
+        let b=match c {
+            'á'|'à'|'â'|'ã'|'ä'|'Á'|'À'|'Â'|'Ã'|'Ä'=>b'a',
+            'é'|'è'|'ê'|'ë'|'É'|'È'|'Ê'|'Ë'=>b'e',
+            'í'|'ì'|'î'|'ï'|'Í'|'Ì'|'Î'|'Ï'=>b'i',
+            'ó'|'ò'|'ô'|'õ'|'ö'|'Ó'|'Ò'|'Ô'|'Õ'|'Ö'=>b'o',
+            'ú'|'ù'|'û'|'ü'|'Ú'|'Ù'|'Û'|'Ü'=>b'u',
+            'ç'|'Ç'=>b'c',
+            'ñ'|'Ñ'=>b'n',
+            '–'|'—'=>b'-',
+            '‘'|'’'=>b'\'',
+            '“'|'”'=>b'"',
+            ascii if ascii.is_ascii()=>ascii as u8,
             _=>b'?',
         };
         if b==b'(' || b==b')'||b==b'\\' {
