@@ -2,14 +2,14 @@
 
 ## E0 — Fundação técnica [INICIADA]
 - [x] Monorepo/workspace Rust separado do Projeto 1.
-- [x] Modelo tipado experimental: paredes, lajes, pavimentos.
+- [x] Schema legado experimental de paredes/lajes/pavimentos, mantido por compatibilidade.
 - [x] Serialização JSON, validação, quantitativos brutos.
 - [x] Editor 2D básico + prévia isométrica + CLI Python.
 - [x] Testes de lógica Python e testes Rust incluídos no código.
 - [ ] Compilar e testar aplicativo Rust em Windows x64 com Cargo.
 - [ ] Testes funcionais manuais de desenho, seleção, abrir/salvar, undo/redo.
 
-**Aceite E0:** aplicativo compila em máquina real, cria ≥4 paredes, salva, reabre sem perda de dados e passa `cargo test --workspace`.
+**Aceite E0 revisado:** aplicativo compila, abre um projeto vazio, salva/reabre sem perdas e passa `cargo test --workspace`. Ferramentas temporárias de desenho de parede/laje foram removidas.
 
 ## E0.2 — Componentes e interoperabilidade [PROTÓTIPO PARCIAL]
 - [x] Especificação do objeto BIM universal e diretrizes de conversão SKP/RFA/GSM/IFC.
@@ -82,3 +82,7 @@
 ## Prioridade imediata
 
 Validar E0/E0.2 no Windows, corrigir problemas detectados, então iniciar E1 (kernel CAD, viewport 3D e seleção de faces). **Não iniciar FEM estrutural antes de estabilizar núcleo geométrico e semântico.**
+
+## Limpeza da base experimental
+
+As ferramentas demonstrativas de parede, janela e piso/laje foram removidas. As ferramentas BIM profissionais continuam no escopo futuro e devem ser implementadas sobre geometria e testes reais, sem restaurar os protótipos.
