@@ -2,15 +2,30 @@
 
 Software CAD/BIM independente, separado do Projeto 1 (plugin SketchUp).
 
-## Estado atual — base limpa
+## E1 — Câmeras, cenas e Navigator (em validação)
+
+A etapa E1 adiciona ao código atual: câmeras ortogonais, perspectiva, perspectiva de dois pontos, órbita e pan; seleção por janela/cruzamento de marcadores, mapas de pavimentos/pontos de vista, vistas salvas, tabelas, conjuntos publicadores e informações do projeto.
+
+- **Arquivo → Informações do Projeto**: cliente, local, arquiteto, fase, revisão, código e campos personalizados.
+- **Mapa do Projeto**: pavimentos e viewpoints 3D, plantas, cortes, elevações e detalhes.
+- **Vistas/Tabelas**: snapshots de câmera, opções de escala/camadas, tabelas de pavimentos, elementos e vistas.
+- **Publicador**: listas vinculadas, exportação inicial JSON de vistas e CSV de tabelas.
+- **Controles 3D**: Shift+meio ou direito arrastado = órbita; meio arrastado = pan; roda = zoom.
+- **Seleção**: esquerda→direita = contém; direita→esquerda = cruza, aplicada a marcadores de viewpoint.
+
+**Importante:** o visualizador ainda desenha uma grade 3D e marcadores, não sólidos BIM. Cortes e elevações são registros no navegador; geração documental e PDF/IFC virão depois. As ferramentas de paredes, pisos/lajes e janelas de teste permanecem removidas.
+
+Documentação detalhada: [Câmeras, cenas e publicador](docs/CAMERAS_CENAS_E_PUBLICADOR.md).
+
+## Limpeza anterior da base
 
 As ferramentas provisórias de teste de **parede, janela e piso/laje** foram removidas. O starter possuía desenho de paredes por clique, prévias ilustrativas de paredes e lajes, quantitativos brutos demonstrativos e a casa piloto. Esses recursos não constituíam ferramentas BIM definitivas. Não havia uma ferramenta real de janela nessa base.
 
-O aplicativo agora inicia com **um projeto vazio**. Mantém a interface desktop, o navegador de pavimentos, o nome do projeto e as operações de abrir/salvar; as áreas 2D e 3D estão reservadas à implementação definitiva.
+O aplicativo inicia com **um projeto vazio**. Oferece uma viewport de grade projetada, câmeras orbitáveis, um navegador com três mapas e salvamento de cenas. A geometria BIM definitiva ainda não está integrada.
 
 Preservamos no núcleo Rust o schema experimental com tipos legados de parede/laje para **abrir arquivos antigos sem descartar seus dados**, mas sem oferecer ferramentas de criação ou renderização desses elementos. O grafo numérico paramétrico e os utilitários Python de validação também permanecem disponíveis.
 
-**Ainda não implementado:** kernel CAD B-Rep, viewport 3D real, editor visual por nós, importadores SKP/RFA/GSM/IFC, ferramentas BIM profissionais de paredes/pisos/janelas, documentação associativa e análise estrutural validada.
+**Ainda não implementado:** kernel CAD B-Rep e renderização de sólidos BIM, editor visual por nós, importadores SKP/RFA/GSM/IFC, ferramentas BIM profissionais de paredes/pisos/janelas, documentação associativa e análise estrutural validada.
 
 ## Objetivo do produto
 
