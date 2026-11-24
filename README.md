@@ -8,7 +8,7 @@ A etapa E2 implementa o vínculo de vistas ao modelo existente:
 - Plantas de pavimento derivadas dos contornos armazenados; cortes por interseção geométrica; elevações por projeção vetorial de arestas.
 - A viewport mostra a geometria read-only dos elementos já gravados, sem reintroduzir as ferramentas provisórias de parede/janela/laje.
 - Criação de pranchas A3, posicionamento automático inicial de vistas salvas e pré-visualização.
-- **Prancha PDF vetorial** exportável diretamente ou por Conjuntos Publicadores.
+- **Prancha PDF vetorial** exportável diretamente ou por Conjuntos Publicadores, inclusive wireframe de vistas 3D salvas.
 
 **Atenção:** não há remoção de linhas ocultas nem escala de impressão real 1:N. Os desenhos usam ajuste ao quadro e não devem ser usados como documentos executivos. Projetos vazios continuam sem geometria. Veja [E2 — documentação preliminar](docs/DOCUMENTACAO_PRELIMINAR_E2.md).
 
