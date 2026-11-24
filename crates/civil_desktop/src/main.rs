@@ -965,7 +965,7 @@ fn schedule_csv(project:&Project,kind:ScheduleKind)->String {
 impl eframe::App for StudioApp {
     fn ui(&mut self,root:&mut egui::Ui,_frame:&mut eframe::Frame) {
         let ctx = root.ctx().clone();
-        if !ctx.wants_keyboard_input() && ctx.input(|i|i.key_pressed(egui::Key::O)) {
+        if !ctx.egui_wants_keyboard_input() && ctx.input(|i|i.key_pressed(egui::Key::O)) {
             self.orbit_tool=!self.orbit_tool;
         }
         self.top_bar(root);
