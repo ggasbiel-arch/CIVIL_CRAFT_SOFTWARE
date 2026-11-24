@@ -2,7 +2,20 @@
 
 Software CAD/BIM independente, separado do Projeto 1 (plugin SketchUp).
 
-## E2 — Documentação e PDF vetorial (incremento)
+## E3 — Escalas físicas, estilos e documentação técnica (implementação inicial)
+
+- **Escala real no PDF:** planta, corte, elevação e detalhe usam 1:N em milímetros físicos. A exportação é recusada quando a vista não cabe no quadro; perspectivas 3D permanecem *SEM ESCALA*.
+- **Estilos por vista:** técnico, monocromático e conceitual; pena em milímetros e cor.
+- **Hachuras vetoriais:** padrões diagonal/cross para seções prismáticas, com espaçamento configurado em milímetros no papel.
+- **Cotas associativas simples:** medidas de paredes/lajes legadas e alturas projetadas, calculadas em metros a partir do modelo atual.
+- **Ocultação experimental de arestas:** teste de interseção de raios com prismas, amostrado em segmentos; não equivale ao algoritmo preciso de visibilidade B-Rep.
+- **Ajuda → Guia de trabalho CIVIL CRAFT:** instruções próprias incluídas na interface.
+
+Leia [Guia operacional E3](docs/GUIA_CIVIL_CRAFT_E3.md) e [Matriz funcional original](docs/MATRIZ_FUNCIONAL_ARCHICAD_ORIGINAL.md). O manual de terceiros **não foi copiado**. A matriz utiliza documentação pública somente como referência de comportamentos.
+
+**Uso técnico:** os desenhos ainda não incluem cotagem executiva completa, hidden-line exata, hachuras por material, layout mestre, bibliotecas BIM profissionais ou conformidade ABNT validada.
+
+## E2 — Documentação e PDF vetorial (histórico)
 
 A etapa E2 implementa o vínculo de vistas ao modelo existente:
 - Plantas de pavimento derivadas dos contornos armazenados; cortes por interseção geométrica; elevações por projeção vetorial de arestas.
@@ -10,7 +23,7 @@ A etapa E2 implementa o vínculo de vistas ao modelo existente:
 - Criação de pranchas A3, posicionamento automático inicial de vistas salvas e pré-visualização.
 - **Prancha PDF vetorial** exportável diretamente ou por Conjuntos Publicadores, inclusive wireframe de vistas 3D salvas.
 
-**Atenção:** não há remoção de linhas ocultas nem escala de impressão real 1:N. Os desenhos usam ajuste ao quadro e não devem ser usados como documentos executivos. Projetos vazios continuam sem geometria. Veja [E2 — documentação preliminar](docs/DOCUMENTACAO_PRELIMINAR_E2.md).
+**Atenção:** a etapa E2 usava ajuste ao quadro. A E3 agora introduz escala real 1:N para vistas 2D e ocultação aproximada de arestas. Ainda não são desenhos executivos. Projetos vazios continuam sem geometria. Veja [E2 — documentação preliminar](docs/DOCUMENTACAO_PRELIMINAR_E2.md).
 
 ## E1 — Câmeras, cenas e Navigator
 
@@ -23,7 +36,7 @@ A etapa E1 adiciona ao código atual: câmeras ortogonais, perspectiva, perspect
 - **Controles 3D**: Shift+meio ou direito arrastado = órbita; meio arrastado = pan; roda = zoom.
 - **Seleção**: esquerda→direita = contém; direita→esquerda = cruza, aplicada a marcadores de viewpoint.
 
-**Importante:** o visualizador ainda desenha uma grade 3D e marcadores, não sólidos BIM. Cortes e elevações são registros no navegador; geração documental e PDF/IFC virão depois. As ferramentas de paredes, pisos/lajes e janelas de teste permanecem removidas.
+**Importante:** a viewport já oferece wireframe dos elementos armazenados e a geração vetorial inicial de plantas, cortes e elevações. Ainda não há sólidos BIM B-Rep, IFC ou documentação executiva. As ferramentas de paredes, pisos/lajes e janelas de teste permanecem removidas.
 
 Documentação detalhada: [Câmeras, cenas e publicador](docs/CAMERAS_CENAS_E_PUBLICADOR.md).
 
@@ -33,9 +46,9 @@ As ferramentas provisórias de teste de **parede, janela e piso/laje** foram rem
 
 O aplicativo inicia com **um projeto vazio**. Oferece uma viewport de grade projetada, câmeras orbitáveis, um navegador com três mapas e salvamento de cenas. A geometria BIM definitiva ainda não está integrada.
 
-Preservamos no núcleo Rust o schema experimental com tipos legados de parede/laje para **abrir arquivos antigos sem descartar seus dados**, mas sem oferecer ferramentas de criação ou renderização desses elementos. O grafo numérico paramétrico e os utilitários Python de validação também permanecem disponíveis.
+Preservamos no núcleo Rust o schema experimental com tipos legados de parede/laje para **abrir arquivos antigos sem descartar seus dados**, e agora permitimos sua visualização/documentação somente leitura, sem ferramentas de criação. O grafo numérico paramétrico e os utilitários Python de validação também permanecem disponíveis.
 
-**Ainda não implementado:** kernel CAD B-Rep e geometria BIM avançada, editor visual por nós, importadores SKP/RFA/GSM/IFC, ferramentas BIM profissionais de paredes/pisos/janelas, documentação executiva completa com escalas físicas e análise estrutural validada.
+**Ainda não implementado:** kernel CAD B-Rep, edição de sólidos BIM avançada, editor visual por nós, importadores SKP/RFA/GSM/IFC, ferramentas BIM definitivas de paredes/pisos/janelas, cotas executivas completas e análise estrutural validada.
 
 ## Objetivo do produto
 
@@ -53,13 +66,15 @@ python python/civil_tools.py validate samples/projeto_vazio.bim.json
 python python/civil_tools.py summary samples/projeto_vazio.bim.json
 ```
 
-Os testes Python foram executados durante a limpeza. A compilação Rust ainda requer validação num ambiente com Cargo.
+A compilação e os testes Rust/Python são realizados pelo GitHub Actions no Windows e Ubuntu; confira o status da branch antes de usar a versão.
 
 ## Organização
 
 - `crates/civil_core/src/lib.rs` — schema legado e validação.
 - `crates/civil_core/src/components.rs` — definições/instâncias BIM e grafo numérico.
-- `crates/civil_desktop/src/main.rs` — shell desktop neutro.
+- `crates/civil_core/src/documentation.rs` — vistas e exportador vetorial PDF.
+- `crates/civil_core/src/technical.rs` — escala física, estilo por vista, hachuras, cotas e visibilidade amostrada.
+- `crates/civil_desktop/src/main.rs` — UI de câmeras, documentação, pranchas, publicador e ajuda.
 - `python/civil_tools.py` — validação e inspeção, sem `add-wall`.
 - `samples/projeto_vazio.bim.json` — projeto inicial vazio.
 - `samples/porta_parametrica.component.json` — teste numérico isolado de componentes (não é ferramenta de porta/janela).
