@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "Projeto vazio — CAD/BIM",
+  "levels": [
+    {
+      "id": "P0",
+      "name": "Térreo",
+      "elevation_m": 0
+    }
+  ],
+  "elements": []
+}
