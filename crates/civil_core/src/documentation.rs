@@ -261,12 +261,13 @@ pub fn render_saved_view(project:&Project,saved:&SavedView)->Result<VectorDrawin
     Ok(drawing)
 }
 
-/// Export a linked sheet on ISO-style A3 paper as a simple vector PDF.
+/// Generate a vector PDF of live linked views with true physical scales for
+/// 2D model-derived views, per-view styles, line hatches and measured dimensions.
 ///
-/// Exports existing BIM records (currently legacy walls and slabs) dynamically
-/// through the saved viewpoint ID. Fit-to-frame is used, NOT print scale 1:N.
-/// Supports projected 3D wireframe and 2D plans/sections/elevations; no hatches, occlusion, font embedding or PDF/A.
+/// Sheets are not drawings for construction: no exact B-Rep, no lineweight
+/// standard preset, no PDF/A and occlusion is sampled rather than analytic.
 pub fn export_sheet_pdf(project:&Project,sheet:&Sheet)->Result<Vec<u8>,String>{
+    use crate::technical::{PrintScale,PT_PER_MM,styled_view,section_hatches,derived_dimensions};
     project.validate()?;
     sheet.validate()?;
     let paper_w=sheet.width_mm*PT_PER_MM;
@@ -287,45 +288,113 @@ pub fn export_sheet_pdf(project:&Project,sheet:&Sheet)->Result<Vec<u8>,String>{
     pdf_text(&mut cmd,18.0*PT_PER_MM,13.0*PT_PER_MM,8.0,
         &format!("Codigo: {} | Revisao: {} | Prancha: {}",
             project.information.project_code,project.information.revision,sheet.number));
+
     for placement in &sheet.placements {
         let saved=project.workspace.saved_views.iter()
             .find(|v|v.id==placement.saved_view_id)
             .ok_or("Vista vinculada à prancha não encontrada")?;
-        let drawing=render_saved_view(project,saved)?;
+        let source=project.workspace.viewpoints.iter()
+            .find(|v|v.id==saved.viewpoint_id)
+            .ok_or("Ponto de vista vinculado não encontrado")?;
+        let drawing=styled_view(project,saved)?;
         let left=placement.x_mm*PT_PER_MM;
         let top=paper_h-placement.y_mm*PT_PER_MM;
         let width=placement.width_mm*PT_PER_MM;
         let height=placement.height_mm*PT_PER_MM;
+        let clip_bottom=top-height;
         pdf_line(&mut cmd,left,top,left+width,top);
-        pdf_line(&mut cmd,left+width,top,left+width,top-height);
-        pdf_line(&mut cmd,left+width,top-height,left,top-height);
-        pdf_line(&mut cmd,left,top-height,left,top);
+        pdf_line(&mut cmd,left+width,top,left+width,clip_bottom);
+        pdf_line(&mut cmd,left+width,clip_bottom,left,clip_bottom);
+        pdf_line(&mut cmd,left,clip_bottom,left,top);
+        let is_3d=source.kind==ViewpointKind::ThreeD;
+        let notation=if is_3d{"SEM ESCALA".to_string()}else{saved.scale.clone()};
         pdf_text(&mut cmd,left+5.0,top-12.0,9.0,
-            &format!("{} [{}]",saved.title,saved.scale));
+            &format!("{} [{}]",saved.title,notation));
+
         if let Some((minimum,maximum))=drawing.bounds() {
+            let print_scale=PrintScale::parse(&saved.scale)?;
             let span_x=(maximum[0]-minimum[0]).max(0.05);
             let span_y=(maximum[1]-minimum[1]).max(0.05);
-            let drawable_w=(width-16.0).max(1.0);
-            let drawable_h=(height-35.0).max(1.0);
-            let scale=(drawable_w/span_x).min(drawable_h/span_y);
+            let drawable_w=(width-18.0*PT_PER_MM).max(1.0);
+            let drawable_h=(height-27.0*PT_PER_MM).max(1.0);
+            let scale=if is_3d {
+                (drawable_w/span_x).min(drawable_h/span_y)
+            }else{
+                let true_scale=print_scale.points_per_model_meter();
+                if span_x*true_scale>drawable_w+1e-6
+                    || span_y*true_scale>drawable_h+1e-6 {
+                    return Err(format!(
+                        "Vista '{}' não cabe na prancha em {}. Selecione outra escala ou aumente o quadro.",
+                        saved.title,saved.scale));
+                }
+                true_scale
+            };
             let center_x=(minimum[0]+maximum[0])*0.5;
             let center_y=(minimum[1]+maximum[1])*0.5;
             let draw_x=left+width/2.0;
-            let draw_y=top-height/2.0-5.0;
-            cmd.push_str("0 0 0 RG 0.48 w\n");
-            for seg in &drawing.lines {
-                let a=[draw_x+(seg.start[0]-center_x)*scale,
-                       draw_y+(seg.start[1]-center_y)*scale];
-                let b=[draw_x+(seg.end[0]-center_x)*scale,
-                       draw_y+(seg.end[1]-center_y)*scale];
+            let draw_y=top-height/2.0-5.0*PT_PER_MM;
+            let to_pdf=|p:Point2|->Point2 {
+                [draw_x+(p[0]-center_x)*scale,
+                 draw_y+(p[1]-center_y)*scale]
+            };
+
+            // Clip hatches and dimensions to their own view frame.
+            cmd.push_str(&format!("q\n{left:.3} {clip_bottom:.3} {width:.3} {height:.3} re W n\n"));
+            let color=saved.graphics.color();
+            let line_weight=saved.graphics.line_width_mm*PT_PER_MM;
+            if source.kind==ViewpointKind::Section && !is_3d {
+                let hatch_spacing_m=saved.graphics.hatch_spacing_mm
+                    *print_scale.denominator/1000.0;
+                let hatches=section_hatches(&drawing,saved.graphics.hatch,hatch_spacing_m);
+                cmd.push_str(&format!(
+                    "0.56 0.58 0.60 RG {:.3} w\n",(line_weight*0.55).max(0.08)));
+                for hatch in hatches.iter().take(4000) {
+                    let a=to_pdf(hatch.start);let b=to_pdf(hatch.end);
+                    pdf_line(&mut cmd,a[0],a[1],b[0],b[1]);
+                }
+            }
+            cmd.push_str(&format!(
+                "{:.4} {:.4} {:.4} RG {:.3} w\n",
+                color[0],color[1],color[2],line_weight));
+            for segment in &drawing.lines {
+                let a=to_pdf(segment.start);
+                let b=to_pdf(segment.end);
                 pdf_line(&mut cmd,a[0],a[1],b[0],b[1]);
             }
-        } else {
+
+            // Dimension values are computed in model metres, not PDF pixels.
+            if !is_3d && saved.graphics.auto_dimensions {
+                let dimensions=derived_dimensions(project,source);
+                cmd.push_str(&format!("0.15 0.15 0.15 RG {:.3} w\n",
+                    (0.12*PT_PER_MM).max(0.12)));
+                for dim in dimensions.iter().take(80) {
+                    let a=to_pdf(dim.start);let b=to_pdf(dim.end);
+                    let dx=b[0]-a[0];let dy=b[1]-a[1];
+                    let len=dx.hypot(dy);
+                    if len < 2.0*PT_PER_MM {continue;}
+                    let offset=6.0*PT_PER_MM;
+                    let normal=[-dy/len,dx/len];
+                    let shift=|p:Point2,k:f64| -> Point2 {
+                        [p[0]+normal[0]*k,p[1]+normal[1]*k]
+                    };
+                    let c=shift(a,offset);
+                    let d=shift(b,offset);
+                    let ca=shift(a,offset+2.0*PT_PER_MM);
+                    let db=shift(b,offset+2.0*PT_PER_MM);
+                    pdf_line(&mut cmd,a[0],a[1],ca[0],ca[1]);
+                    pdf_line(&mut cmd,b[0],b[1],db[0],db[1]);
+                    pdf_line(&mut cmd,c[0],c[1],d[0],d[1]);
+                    let mid=[(c[0]+d[0])/2.0,(c[1]+d[1])/2.0];
+                    pdf_text(&mut cmd,mid[0]+1.5,mid[1]+3.0,7.5,&dim.label());
+                }
+            }
+            cmd.push_str("Q\n");
+        }else{
             pdf_text(&mut cmd,left+7.0,top-height/2.0,9.0,
                 "Sem elementos nesta vista");
         }
     }
-    // Minimal PDF 1.4 with five indirect objects, one page, WinAnsi Helvetica.
+    // Tiny, deterministic PDF 1.4 writer for vector paths and annotations.
     let stream_bytes=cmd.as_bytes();
     let objects=vec![
         "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
