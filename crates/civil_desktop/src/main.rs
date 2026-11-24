@@ -507,8 +507,8 @@ impl StudioApp {
             });
     }
 
-    fn top_bar(&mut self, ctx:&egui::Context) {
-        egui::TopBottomPanel::top("main_menus").show(ctx, |ui| {
+    fn top_bar(&mut self, root:&mut egui::Ui) {
+        egui::Panel::top("main_menus").show(root, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.strong("CIVIL CRAFT · Projeto 2");
                 ui.separator();
@@ -541,9 +541,9 @@ impl StudioApp {
         });
     }
 
-    fn navigator(&mut self, ctx:&egui::Context) {
-        egui::SidePanel::left("navigator").resizable(true)
-            .default_width(295.0).min_width(235.0).show(ctx, |ui| {
+    fn navigator(&mut self, root:&mut egui::Ui) {
+        egui::Panel::left("navigator").resizable(true)
+            .default_size(295.0).size_range(235.0..=480.0).show(root, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.selectable_value(&mut self.tab,NavigatorTab::ProjectMap,"Projeto");
                 ui.selectable_value(&mut self.tab,NavigatorTab::SavedViews,"Vistas/Tabelas");
@@ -714,13 +714,14 @@ fn schedule_csv(project:&Project,kind:ScheduleKind)->String {
 }
 
 impl eframe::App for StudioApp {
-    fn update(&mut self,ctx:&egui::Context,_frame:&mut eframe::Frame) {
+    fn ui(&mut self,root:&mut egui::Ui,_frame:&mut eframe::Frame) {
+        let ctx = root.ctx().clone();
         if ctx.input(|i|i.key_pressed(egui::Key::O)) {
             self.orbit_tool=!self.orbit_tool;
         }
-        self.top_bar(ctx);
-        self.navigator(ctx);
-        egui::TopBottomPanel::bottom("status").show(ctx,|ui|{
+        self.top_bar(root);
+        self.navigator(root);
+        egui::Panel::bottom("status").show(root,|ui|{
             ui.horizontal_wrapped(|ui|{
                 ui.label("Arquivo:");
                 ui.add_sized([220.0,22.0],egui::TextEdit::singleline(&mut self.file_path));
@@ -728,8 +729,8 @@ impl eframe::App for StudioApp {
                 ui.label(&self.status);
             });
         });
-        egui::CentralPanel::default().show(ctx,|ui|self.draw_viewport(ui));
-        self.project_info_window(ctx);
+        egui::CentralPanel::default().show(root,|ui|self.draw_viewport(ui));
+        self.project_info_window(&ctx);
     }
 }
 
