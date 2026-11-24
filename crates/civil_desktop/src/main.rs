@@ -247,15 +247,6 @@ impl StudioApp {
             self.status = "Selecione primeiro uma vista salva".into();
             return;
         };
-        let Some(source) = self.project.workspace.viewpoints.iter()
-            .find(|v|v.id == saved.viewpoint_id) else {
-            self.status = "Ponto de vista não encontrado".into();
-            return;
-        };
-        if source.kind == ViewpointKind::ThreeD {
-            self.status = "Por enquanto as pranchas PDF aceitam plantas, cortes, elevações e detalhes 2D".into();
-            return;
-        }
         let id = self.project.workspace.allocate_id("placement");
         let Some(sheet) = self.project.workspace.sheets.iter_mut()
             .find(|s|s.id == self.selected_sheet) else {
@@ -622,7 +613,7 @@ impl StudioApp {
         ui.label("Diretório de publicação");
         ui.text_edit_singleline(&mut self.publisher_dir);
         if ui.button("Publicar conjunto").clicked() { self.publish_active_set(); }
-        ui.small("Exporta vistas JSON, tabelas CSV e pranchas 2D em PDF vetorial. PDF 3D, IFC e desenho executivo completo ainda pendentes.");
+        ui.small("Exporta vistas JSON, tabelas CSV e pranchas com desenhos 2D/3D vetoriais em PDF. IFC e documentação executiva ainda pendentes.");
     }
 
     fn project_info_window(&mut self, ctx: &egui::Context) {
@@ -764,12 +755,10 @@ impl StudioApp {
                 egui::StrokeKind::Inside);
             let Some(saved)=self.project.workspace.saved_views.iter()
                 .find(|v|v.id==place.saved_view_id) else {continue;};
-            let Some(vp)=self.project.workspace.viewpoints.iter()
-                .find(|v|v.id==saved.viewpoint_id) else {continue;};
             painter.text(bounds.left_top()+egui::vec2(5.0,4.0),
                 egui::Align2::LEFT_TOP,&saved.title,
                 egui::FontId::proportional(10.0),Color32::DARK_GRAY);
-            let draw=documentation::render_viewpoint(&self.project,vp);
+            let Ok(draw)=documentation::render_saved_view(&self.project,saved) else {continue;};
             if let Some((min,max))=draw.bounds() {
                 let w=(max[0]-min[0]).max(0.05);
                 let h=(max[1]-min[1]).max(0.05);
