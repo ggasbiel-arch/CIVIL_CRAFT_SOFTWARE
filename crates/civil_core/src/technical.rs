@@ -415,6 +415,37 @@ mod tests {
     }
 
     #[test]
+    fn occluded_back_wall_is_filtered_in_elevation() {
+        let mut project=Project::default();
+        project.elements.push(Element::Wall(Wall{
+            id:"near".into(),level_id:"P0".into(),
+            start:[-4.0,0.0],end:[4.0,0.0],
+            thickness_m:0.4,height_m:4.0,
+        }));
+        project.elements.push(Element::Wall(Wall{
+            id:"far".into(),level_id:"P0".into(),
+            start:[-1.0,3.0],end:[1.0,3.0],
+            thickness_m:0.2,height_m:2.5,
+        }));
+        let mut view=project.workspace.viewpoints[0].clone();
+        view.id="elev-test".into();
+        view.kind=ViewpointKind::Elevation;
+        view.camera.yaw_deg=0.0;
+        view.marker=[0.0,-5.0,0.0];
+        project.workspace.viewpoints.push(view.clone());
+        let id=project.workspace.save_view(&view.id,"Elevação".into(),Camera::default()).unwrap();
+        let saved=project.workspace.saved_views.iter().find(|v|v.id==id).unwrap();
+        let unfiltered=styled_view(&project,saved).unwrap();
+        assert!(unfiltered.lines.iter().any(|line|line.element_id=="far"));
+        let mut styled=saved.clone();
+        styled.graphics.hide_occluded_edges=true;
+        let hidden=styled_view(&project,&styled).unwrap();
+        assert!(hidden.lines.iter().all(|line|line.element_id!="far"),
+            "The front wall should fully occlude the smaller back wall");
+        assert!(hidden.lines.iter().any(|line|line.element_id=="near"));
+    }
+
+    #[test]
     fn hidden_edge_pass_does_not_add_new_model_geometry(){
         let mut p=Project::default();
         p.elements.push(Element::Wall(Wall{id:"W".into(),level_id:"P0".into(),
