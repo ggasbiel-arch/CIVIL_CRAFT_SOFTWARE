@@ -20,7 +20,7 @@ Unificar, em arquitetura original, os seguintes paradigmas:
 - Evitar dependências pagas sem aprovação. Integrar kernel CAD 3D robusto apenas em fase posterior, mediante avaliação documentada (B-Rep, tolerâncias, licenças, interoperabilidade, segurança e performance).
 
 ## Estado real do código
-`crates/civil_core` tem pavimentos, paredes, lajes e validação bruta. `crates/civil_core/src/components.rs` contém definições/instâncias e um grafo **numérico**, sem geração de sólidos. `crates/civil_desktop` é protótipo com planta 2D e vista isométrica ilustrativa. `python/` tem utilitários. Ainda não existem importadores reais, editor gráfico de nós, kernel B-Rep, exportação IFC nem cálculo estrutural validado.
+`crates/civil_core` preserva paredes e lajes como tipos legados para compatibilidade de arquivos. `crates/civil_core/src/components.rs` contém definições/instâncias e um grafo **numérico**, sem geração de sólidos. `crates/civil_desktop` é uma casca neutra de interface, sem ferramentas geométricas de demonstração. `python/` tem utilitários. Ainda não existem importadores reais, editor gráfico de nós, kernel B-Rep, exportação IFC nem cálculo estrutural validado.
 
 ## Processo obrigatório de implementação
 1. Ler `README.md`, `docs/ARQUITETURA.md`, `docs/ROADMAP.md`, `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md` e este arquivo.
@@ -41,9 +41,13 @@ cargo fmt --all -- --check
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 python -m unittest discover -s tests -v
-python python/civil_tools.py validate samples/casa_piloto.bim.json
+python python/civil_tools.py validate samples/projeto_vazio.bim.json
 ```
 Se faltar ambiente/toolchain, declarar precisamente o que não pôde executar; não fingir validação. Não eliminar testes para mascarar falhas.
 
 ## Entregas por interação Codex
 No fim, fornecer: arquivos modificados, resumo do que funciona, testes realmente executados e resultados, limitações reais, próximos passos. Evitar longos planos sem implementar código. Responder em português do Brasil.
+
+## Limpeza das ferramentas de teste — novembro/2026
+
+Não restaurar o desenho temporário de paredes, a visualização simplificada de paredes e pisos/lajes, os controles de espessura/altura da demonstração, o comando `add-wall` ou a casa piloto. Não havia ferramenta real de janela nesta base. Manter os dados legados somente para leitura de projetos antigos. Ferramentas BIM definitivas exigem geometria real, testes, persistência e edição associativa.
