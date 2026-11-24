@@ -50,3 +50,7 @@ Ver `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md` para contratos, restrições e
 ## Propriedade intelectual
 
 Reproduzir fluxos e capacidades gerais é diferente de reutilizar código, componentes protegidos, identidades, ativos, algoritmos não licenciados ou formatos sem autorização. Revisar termos e licenças antes de qualquer importador/exportador proprietário.
+
+## Interface limpa após testes
+
+Áreas 2D/3D sem ferramentas arquitetônicas fictícias. O schema v1 aceita `Wall`/`Slab` antigos para preservação dos arquivos, mas nenhuma ferramenta de teste os cria ou desenha. O kernel geométrico e as ferramentas BIM reais ainda deverão ser implementados.
