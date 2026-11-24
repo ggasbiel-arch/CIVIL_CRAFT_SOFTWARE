@@ -206,6 +206,8 @@ pub struct SavedView {
     pub camera: Camera,
     pub scale: String,
     #[serde(default)]
+    pub graphics: crate::technical::GraphicSettings,
+    #[serde(default)]
     pub layer_preset: String,
     #[serde(default)]
     pub notes: String,
@@ -297,7 +299,8 @@ impl Workspace {
         let id = self.allocate_id("view");
         self.saved_views.push(SavedView {
             id: id.clone(), title, viewpoint_id: viewpoint_id.into(), camera,
-            scale: "1:100".into(), layer_preset: "Todas as camadas".into(), notes: String::new(),
+            scale: "1:100".into(), graphics: crate::technical::GraphicSettings::default(),
+            layer_preset: "Todas as camadas".into(), notes: String::new(),
         });
         Ok(id)
     }
@@ -319,6 +322,10 @@ impl Workspace {
         ids.clear();
         for v in &self.saved_views {
             v.camera.validate()?;
+            v.graphics.validate()?;
+            if crate::technical::PrintScale::parse(&v.scale).is_err() {
+                return Err(format!("Escala inválida na vista: {}",v.title));
+            }
             if v.id.trim().is_empty() || v.title.trim().is_empty() || !ids.insert(v.id.as_str())
                 || !self.viewpoints.iter().any(|p| p.id == v.viewpoint_id) {
                 return Err("Vista salva inválida ou sem origem".into());
