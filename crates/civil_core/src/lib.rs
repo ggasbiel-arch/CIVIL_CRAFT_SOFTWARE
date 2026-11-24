@@ -1,5 +1,6 @@
 //! Projeto 2 — núcleo paramétrico inicial (não contém um kernel B-Rep).
 pub mod components;
+pub mod navigation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -11,6 +12,10 @@ pub struct Project {
     pub name: String,
     pub levels: Vec<Level>,
     pub elements: Vec<Element>,
+    #[serde(default)]
+    pub information: navigation::ProjectInformation,
+    #[serde(default)]
+    pub workspace: navigation::Workspace,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -82,6 +87,10 @@ impl Default for Project {
             name: "Projeto sem título".into(),
             levels: vec![Level { id: "P0".into(), name: "Térreo".into(), elevation_m: 0.0 }],
             elements: vec![],
+            information: navigation::ProjectInformation::default(),
+            workspace: navigation::Workspace::new_project(&[
+                Level { id: "P0".into(), name: "Térreo".into(), elevation_m: 0.0 }
+            ]),
         }
     }
 }
@@ -102,6 +111,7 @@ impl Project {
             if !self.levels.iter().any(|level| level.id == element.level_id()) { return Err(format!("Pavimento não encontrado: {}", element.level_id())); }
             match element { Element::Wall(w) => validate_wall(w)?, Element::Slab(s) => validate_slab(s)? }
         }
+        self.workspace.validate(&self.levels)?;
         Ok(())
     }
 
