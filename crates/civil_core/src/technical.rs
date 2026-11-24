@@ -374,7 +374,7 @@ pub fn styled_view(project:&Project,saved:&SavedView)->Result<VectorDrawing,Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Wall,Level,Element};
+    use crate::{Wall,Element};
     use crate::navigation::{Camera,ViewpointKind};
 
     #[test]
@@ -422,9 +422,9 @@ mod tests {
         let vp=p.workspace.viewpoints.iter().find(|v|v.kind==ViewpointKind::ThreeD)
             .unwrap().id.clone();
         let id=p.workspace.save_view(&vp,"Vista".into(),Camera::default()).unwrap();
-        let saved=p.workspace.saved_views.iter_mut().find(|s|s.id==id).unwrap();
+        let mut saved=p.workspace.saved_views.iter().find(|s|s.id==id).unwrap().clone();
         saved.graphics.hide_occluded_edges=true;
-        let drawing=styled_view(&p,saved).unwrap();
+        let drawing=styled_view(&p,&saved).unwrap();
         assert!(!drawing.lines.is_empty());
         assert!(drawing.lines.len()<=model_wireframe(&p).len()*12);
     }
