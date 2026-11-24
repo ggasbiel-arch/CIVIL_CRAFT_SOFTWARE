@@ -45,15 +45,6 @@ pub struct Slab {
     pub thickness_m: f64,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Quantities {
-    pub wall_length_m: f64,
-    pub wall_gross_area_m2: f64,
-    pub wall_gross_volume_m3: f64,
-    pub slab_area_m2: f64,
-    pub slab_volume_m3: f64,
-}
-
 impl Element {
     pub fn id(&self) -> &str {
         match self { Self::Wall(w) => &w.id, Self::Slab(s) => &s.id }
@@ -67,19 +58,7 @@ impl Wall {
     pub fn length_m(&self) -> f64 {
         (self.end[0] - self.start[0]).hypot(self.end[1] - self.start[1])
     }
-    pub fn footprint(&self) -> [[f64; 2]; 4] {
-        let dx = self.end[0] - self.start[0];
-        let dy = self.end[1] - self.start[1];
-        let length = self.length_m().max(1e-9);
-        let nx = -dy / length * self.thickness_m * 0.5;
-        let ny = dx / length * self.thickness_m * 0.5;
-        [
-            [self.start[0]+nx, self.start[1]+ny],
-            [self.end[0]+nx, self.end[1]+ny],
-            [self.end[0]-nx, self.end[1]-ny],
-            [self.start[0]-nx, self.start[1]-ny],
-        ]
-    }
+
 }
 
 impl Slab {
@@ -108,51 +87,6 @@ impl Default for Project {
 }
 
 impl Project {
-    pub fn example() -> Self {
-        let mut project = Self { name: "Casa piloto — Projeto 2".into(), ..Self::default() };
-        for (a, b) in [
-            ([-4.0, -3.0], [4.0, -3.0]),
-            ([4.0, -3.0], [4.0, 3.0]),
-            ([4.0, 3.0], [-4.0, 3.0]),
-            ([-4.0, 3.0], [-4.0, -3.0]),
-        ] {
-            project.add_wall("P0", a, b, 0.2, 2.8).expect("valid example");
-        }
-        project.add_slab("P0", vec![[-4.1, -3.1], [4.1, -3.1], [4.1, 3.1], [-4.1, 3.1]], 0.15).expect("valid example");
-        project
-    }
-
-    pub fn next_id(&self, prefix: &str) -> String {
-        let mut n = 1_u64;
-        loop {
-            let id = format!("{prefix}{n}");
-            if !self.elements.iter().any(|element| element.id() == id) { return id; }
-            n += 1;
-        }
-    }
-
-    pub fn add_wall(&mut self, level_id: &str, start: [f64; 2], end: [f64; 2], thickness_m: f64, height_m: f64) -> Result<String, String> {
-        if !self.levels.iter().any(|level| level.id == level_id) { return Err("Pavimento inexistente".into()); }
-        let wall = Wall { id: self.next_id("W"), level_id: level_id.to_owned(), start, end, thickness_m, height_m };
-        validate_wall(&wall)?;
-        let id = wall.id.clone();
-        self.elements.push(Element::Wall(wall));
-        Ok(id)
-    }
-
-    pub fn add_slab(&mut self, level_id: &str, polygon: Vec<[f64; 2]>, thickness_m: f64) -> Result<String, String> {
-        if !self.levels.iter().any(|level| level.id == level_id) { return Err("Pavimento inexistente".into()); }
-        let slab = Slab { id: self.next_id("S"), level_id: level_id.to_owned(), polygon, thickness_m };
-        validate_slab(&slab)?;
-        let id = slab.id.clone();
-        self.elements.push(Element::Slab(slab));
-        Ok(id)
-    }
-
-    pub fn level_elevation(&self, level_id: &str) -> f64 {
-        self.levels.iter().find(|level| level.id == level_id).map_or(0.0, |level| level.elevation_m)
-    }
-
     pub fn validate(&self) -> Result<(), String> {
         if self.schema_version != SCHEMA_VERSION { return Err("Versão de projeto incompatível".into()); }
         if self.name.trim().is_empty() { return Err("Nome do projeto não pode ser vazio".into()); }
@@ -171,25 +105,6 @@ impl Project {
         Ok(())
     }
 
-    pub fn quantities(&self) -> Quantities {
-        let mut result = Quantities::default();
-        for element in &self.elements {
-            match element {
-                Element::Wall(wall) => {
-                    let length = wall.length_m();
-                    result.wall_length_m += length;
-                    result.wall_gross_area_m2 += length * wall.height_m;
-                    result.wall_gross_volume_m3 += length * wall.height_m * wall.thickness_m;
-                }
-                Element::Slab(slab) => {
-                    let area = slab.area_m2();
-                    result.slab_area_m2 += area;
-                    result.slab_volume_m3 += area * slab.thickness_m;
-                }
-            }
-        }
-        result
-    }
 }
 
 fn valid_xy(point: [f64; 2]) -> bool { point.iter().all(|coord| coord.is_finite()) }
@@ -212,31 +127,33 @@ fn validate_slab(slab: &Slab) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
-    fn example_is_valid_and_has_quantities() {
-        let project = Project::example();
+    fn empty_project_is_valid() {
+        let project = Project::default();
         project.validate().unwrap();
-        let q = project.quantities();
-        assert!((q.wall_length_m - 28.0).abs() < 1e-8);
-        assert!((q.wall_gross_volume_m3 - 15.68).abs() < 1e-8);
-        assert!(q.slab_area_m2 > 50.0);
+        assert!(project.elements.is_empty());
     }
+
     #[test]
-    fn zero_length_wall_is_rejected() {
-        let mut project = Project::default();
-        assert!(project.add_wall("P0", [0.0, 0.0], [0.0, 0.0], 0.15, 2.8).is_err());
-    }
-    #[test]
-    fn serde_round_trip() {
-        let project = Project::example();
+    fn empty_project_round_trip() {
+        let project = Project::default();
         let json = serde_json::to_string(&project).unwrap();
         let restored: Project = serde_json::from_str(&json).unwrap();
         assert_eq!(project, restored);
     }
+
     #[test]
-    fn duplicated_ids_are_invalid() {
-        let mut project = Project::example();
-        project.elements.push(project.elements[0].clone());
+    fn duplicate_level_id_is_rejected() {
+        let mut project = Project::default();
+        project.levels.push(project.levels[0].clone());
         assert!(project.validate().is_err());
+    }
+
+    #[test]
+    fn legacy_elements_remain_readable() {
+        let json = r#"{"schema_version":1,"name":"Legacy","levels":[{"id":"P0","name":"Ground","elevation_m":0.0}],"elements":[{"type":"wall","id":"W1","level_id":"P0","start":[0.0,0.0],"end":[2.0,0.0],"thickness_m":0.2,"height_m":2.8}]}"#;
+        let project: Project = serde_json::from_str(json).unwrap();
+        project.validate().unwrap();
     }
 }
