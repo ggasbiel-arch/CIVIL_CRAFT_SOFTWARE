@@ -421,6 +421,25 @@ mod tests {
     }
 
     #[test]
+    fn linked_pdf_updates_after_model_geometry_changes() {
+        let mut project=project_with_legacy_data();
+        let source=project.workspace.viewpoints.iter()
+            .find(|v|v.kind==ViewpointKind::FloorPlan).unwrap().id.clone();
+        let id=project.workspace.save_view(&source,
+            "Planta associativa".into(),Camera::default()).unwrap();
+        let mut sheet=Sheet::a3_landscape("linked".into(),"A-02".into(),"Associativa".into());
+        sheet.placements.push(SheetPlacement {
+            id:"v".into(),saved_view_id:id,x_mm:20.0,y_mm:20.0,
+            width_mm:300.0,height_mm:210.0,
+        });
+        project.workspace.sheets.push(sheet.clone());
+        let before=export_sheet_pdf(&project,&sheet).unwrap();
+        if let Element::Wall(w)=&mut project.elements[0] {w.end[0]=3.0;}
+        let after=export_sheet_pdf(&project,&sheet).unwrap();
+        assert_ne!(before,after,"PDF must be generated from live model data");
+    }
+
+    #[test]
     fn saved_3d_camera_produces_pdf_wireframe() {
         let mut project=project_with_legacy_data();
         let source=project.workspace.viewpoints.iter()
