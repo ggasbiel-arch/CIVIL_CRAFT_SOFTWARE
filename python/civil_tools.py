@@ -1,10 +1,4 @@
-"""Projeto 2: automação Python para o formato experimental .bim.json.
-
-Exemplos:
-  python python/civil_tools.py validate samples/casa_piloto.bim.json
-  python python/civil_tools.py summary samples/casa_piloto.bim.json
-  python python/civil_tools.py add-wall samples/casa_piloto.bim.json saida.bim.json --start 0 0 --end 3 0
-"""
+"""Validation and inspection of .bim.json files; no temporary drawing tools."""
 from __future__ import annotations
 
 import argparse
@@ -75,64 +69,28 @@ def validate_project(project: dict) -> None:
             raise ValueError(f"Dimensões de {eid} inválidas")
 
 
-def quantities(project: dict) -> dict:
-    output = {"wall_length_m": 0.0, "wall_gross_area_m2": 0.0,
-              "wall_gross_volume_m3": 0.0, "slab_area_m2": 0.0, "slab_volume_m3": 0.0}
-    for element in project["elements"]:
-        if element["type"] == "wall":
-            length = math.dist(element["start"], element["end"])
-            area = length * element["height_m"]
-            output["wall_length_m"] += length
-            output["wall_gross_area_m2"] += area
-            output["wall_gross_volume_m3"] += area * element["thickness_m"]
-        elif element["type"] == "slab":
-            area = polygon_area(element["polygon"])
-            output["slab_area_m2"] += area
-            output["slab_volume_m3"] += area * element["thickness_m"]
-    return output
 
-
-def add_wall(project: dict, level_id: str, start: list[float], end: list[float], thickness_m: float, height_m: float) -> str:
-    used = {element["id"] for element in project["elements"]}
-    number = 1
-    while f"W{number}" in used:
-        number += 1
-    element_id = f"W{number}"
-    project["elements"].append({"type": "wall", "id": element_id, "level_id": level_id,
-                                "start": start, "end": end, "thickness_m": thickness_m,
-                                "height_m": height_m})
-    try:
-        validate_project(project)
-    except (ValueError, KeyError, TypeError):
-        project["elements"].pop()
-        raise
-    return element_id
+def project_summary(project: dict) -> dict:
+    validate_project(project)
+    return {
+        "name": project["name"],
+        "levels": len(project["levels"]),
+        "elements": len(project["elements"]),
+    }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ferramentas de projeto — CAD/BIM 0.1")
+    parser = argparse.ArgumentParser(description="Inspeção de projetos CAD/BIM")
     subs = parser.add_subparsers(dest="command", required=True)
     for action in ("validate", "summary"):
         command = subs.add_parser(action)
         command.add_argument("file", type=Path)
-    create = subs.add_parser("add-wall")
-    create.add_argument("file", type=Path)
-    create.add_argument("output", type=Path)
-    create.add_argument("--level", default="P0")
-    create.add_argument("--start", nargs=2, type=float, required=True)
-    create.add_argument("--end", nargs=2, type=float, required=True)
-    create.add_argument("--thickness", type=float, default=0.2)
-    create.add_argument("--height", type=float, default=2.8)
     args = parser.parse_args()
     project = read_project(args.file)
     if args.command == "validate":
         print(f"OK: {project['name']} | {len(project['elements'])} elementos")
     elif args.command == "summary":
-        print(json.dumps({"name": project["name"], "quantities": quantities(project)}, indent=2, ensure_ascii=False))
-    elif args.command == "add-wall":
-        ident = add_wall(project, args.level, args.start, args.end, args.thickness, args.height)
-        args.output.write_text(json.dumps(project, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"Elemento {ident} criado em {args.output}")
+        print(json.dumps(project_summary(project), indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
