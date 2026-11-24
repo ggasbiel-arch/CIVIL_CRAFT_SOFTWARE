@@ -2,7 +2,17 @@
 
 Software CAD/BIM independente, separado do Projeto 1 (plugin SketchUp).
 
-## E1 — Câmeras, cenas e Navigator (em validação)
+## E2 — Documentação e PDF vetorial (incremento)
+
+A etapa E2 implementa o vínculo de vistas ao modelo existente:
+- Plantas de pavimento derivadas dos contornos armazenados; cortes por interseção geométrica; elevações por projeção vetorial de arestas.
+- A viewport mostra a geometria read-only dos elementos já gravados, sem reintroduzir as ferramentas provisórias de parede/janela/laje.
+- Criação de pranchas A3, posicionamento automático inicial de vistas salvas e pré-visualização.
+- **Prancha PDF vetorial** exportável diretamente ou por Conjuntos Publicadores.
+
+**Atenção:** não há remoção de linhas ocultas nem escala de impressão real 1:N. Os desenhos usam ajuste ao quadro e não devem ser usados como documentos executivos. Projetos vazios continuam sem geometria. Veja [E2 — documentação preliminar](docs/DOCUMENTACAO_PRELIMINAR_E2.md).
+
+## E1 — Câmeras, cenas e Navigator
 
 A etapa E1 adiciona ao código atual: câmeras ortogonais, perspectiva, perspectiva de dois pontos, órbita e pan; seleção por janela/cruzamento de marcadores, mapas de pavimentos/pontos de vista, vistas salvas, tabelas, conjuntos publicadores e informações do projeto.
 
@@ -25,7 +35,7 @@ O aplicativo inicia com **um projeto vazio**. Oferece uma viewport de grade proj
 
 Preservamos no núcleo Rust o schema experimental com tipos legados de parede/laje para **abrir arquivos antigos sem descartar seus dados**, mas sem oferecer ferramentas de criação ou renderização desses elementos. O grafo numérico paramétrico e os utilitários Python de validação também permanecem disponíveis.
 
-**Ainda não implementado:** kernel CAD B-Rep e renderização de sólidos BIM, editor visual por nós, importadores SKP/RFA/GSM/IFC, ferramentas BIM profissionais de paredes/pisos/janelas, documentação associativa e análise estrutural validada.
+**Ainda não implementado:** kernel CAD B-Rep e geometria BIM avançada, editor visual por nós, importadores SKP/RFA/GSM/IFC, ferramentas BIM profissionais de paredes/pisos/janelas, documentação executiva completa com escalas físicas e análise estrutural validada.
 
 ## Objetivo do produto
 
