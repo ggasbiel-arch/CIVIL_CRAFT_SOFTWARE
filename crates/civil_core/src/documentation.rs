@@ -528,6 +528,78 @@ mod tests {
     }
 
     #[test]
+    fn pdf_uses_real_scale_and_computed_dimension_labels() {
+        use crate::technical::HatchPattern;
+        let mut p=project_with_legacy_data();
+        let vp=p.workspace.viewpoints.iter()
+            .find(|v|v.kind==ViewpointKind::FloorPlan).unwrap().id.clone();
+        let view_id=p.workspace.save_view(&vp,"Planta 1:100".into(),Camera::default()).unwrap();
+        let view=p.workspace.saved_views.iter_mut().find(|v|v.id==view_id).unwrap();
+        view.scale="1:100".into();
+        view.graphics.auto_dimensions=true;
+        view.graphics.hatch=HatchPattern::None;
+        let mut sheet=Sheet::a3_landscape("scale-sheet".into(),"A-11".into(),"Escalas".into());
+        sheet.placements.push(SheetPlacement{
+            id:"slot".into(),saved_view_id:view_id,x_mm:15.0,y_mm:15.0,
+            width_mm:320.0,height_mm:220.0,
+        });
+        p.workspace.sheets.push(sheet.clone());
+        let first=String::from_utf8(export_sheet_pdf(&p,&sheet).unwrap()).unwrap();
+        assert!(first.contains("1:100"));
+        assert!(first.contains("4.00 m"));
+        if let Element::Wall(w)=&mut p.elements[0]{w.end[0]=3.0;}
+        let second=String::from_utf8(export_sheet_pdf(&p,&sheet).unwrap()).unwrap();
+        assert!(second.contains("5.00 m"));
+        assert_ne!(first,second);
+    }
+
+    #[test]
+    fn refuses_to_mislabel_drawing_when_model_exceeds_print_frame() {
+        let mut p=project_with_legacy_data();
+        if let Element::Wall(w)=&mut p.elements[0]{w.end[0]=70.0;}
+        let vp=p.workspace.viewpoints.iter()
+            .find(|v|v.kind==ViewpointKind::FloorPlan).unwrap().id.clone();
+        let id=p.workspace.save_view(&vp,"Implantação".into(),Camera::default()).unwrap();
+        let view=p.workspace.saved_views.iter_mut().find(|v|v.id==id).unwrap();
+        view.scale="1:50".into();
+        let mut sheet=Sheet::a3_landscape("overflow".into(),"A-12".into(),"Teste".into());
+        sheet.placements.push(SheetPlacement{
+            id:"slot".into(),saved_view_id:id,x_mm:20.0,y_mm:20.0,
+            width_mm:300.0,height_mm:220.0,
+        });
+        p.workspace.sheets.push(sheet.clone());
+        let error=export_sheet_pdf(&p,&sheet).unwrap_err();
+        assert!(error.contains("não cabe"));
+    }
+
+    #[test]
+    fn section_hatch_changes_vector_pdf_stream() {
+        use crate::technical::HatchPattern;
+        let mut p=project_with_legacy_data();
+        let mut vp=p.workspace.viewpoints.iter().find(|v|v.kind==ViewpointKind::ThreeD)
+            .unwrap().clone();
+        vp.id="section-for-fill".into();
+        vp.kind=ViewpointKind::Section;
+        vp.camera.yaw_deg=0.0;
+        vp.marker=[0.0,0.0,0.0];
+        p.workspace.viewpoints.push(vp.clone());
+        let id=p.workspace.save_view(&vp.id,"Corte".into(),Camera::default()).unwrap();
+        let mut sheet=Sheet::a3_landscape("hatched".into(),"A-13".into(),"Seção".into());
+        sheet.placements.push(SheetPlacement{
+            id:"slot".into(),saved_view_id:id.clone(),x_mm:20.0,y_mm:20.0,
+            width_mm:300.0,height_mm:200.0,
+        });
+        p.workspace.sheets.push(sheet.clone());
+        let none=p.workspace.saved_views.iter_mut().find(|v|v.id==id).unwrap();
+        none.graphics.hatch=HatchPattern::None;
+        let plain=export_sheet_pdf(&p,&sheet).unwrap();
+        p.workspace.saved_views.iter_mut().find(|v|v.id==id).unwrap()
+            .graphics.hatch=HatchPattern::Cross;
+        let hatched=export_sheet_pdf(&p,&sheet).unwrap();
+        assert!(hatched.len()>plain.len(),"Hatch should add line commands to the PDF");
+    }
+
+    #[test]
     fn rejects_sheet_outside_paper() {
         let mut sheet=Sheet::a3_landscape("id".into(),"A-01".into(),"Planta".into());
         sheet.placements.push(SheetPlacement {
