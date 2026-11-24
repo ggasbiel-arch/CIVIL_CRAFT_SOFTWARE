@@ -1,0 +1,25 @@
+name: Windows Desktop Preview
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - ".github/workflows/windows-preview.yml"
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build Windows desktop preview
+        run: cargo build --release -p civil_desktop
+      - name: Upload CIVIL CRAFT Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: CIVIL_CRAFT_Projeto_2_Windows_Preview
+          path: target/release/civil_desktop.exe
+          if-no-files-found: error
+          retention-days: 14
