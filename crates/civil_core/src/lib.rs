@@ -2,6 +2,7 @@
 pub mod components;
 pub mod navigation;
 pub mod documentation;
+pub mod technical;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
