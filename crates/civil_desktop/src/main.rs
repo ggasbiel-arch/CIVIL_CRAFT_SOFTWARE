@@ -32,6 +32,7 @@ struct StudioApp {
     drag_end: Option<Pos2>,
     orbit_tool: bool,
     project_info_open: bool,
+    help_open: bool,
     story_name: String,
     story_elevation: f64,
     viewpoint_name: String,
@@ -65,7 +66,7 @@ impl Default for StudioApp {
             active_publisher: String::new(),
             selected_markers: Vec::new(),
             drag_start: None, drag_end: None,
-            orbit_tool: false, project_info_open: false,
+            orbit_tool: false, project_info_open: false, help_open: false,
             story_name: "Novo pavimento".into(), story_elevation: 3.0,
             viewpoint_name: String::new(),
             saved_view_name: "Vista 3D".into(),
@@ -700,6 +701,59 @@ impl StudioApp {
             });
     }
 
+    fn help_window(&mut self,ctx:&egui::Context) {
+        if !self.help_open { return; }
+        egui::Window::new("Guia de Trabalho CIVIL CRAFT")
+            .open(&mut self.help_open)
+            .default_width(610.0)
+            .resizable(true)
+            .show(ctx,|ui|{
+                egui::ScrollArea::vertical().show(ui,|ui|{
+                    ui.heading("Guia original CIVIL CRAFT · documentação");
+                    ui.small("Este guia descreve os comandos implementados no software; não reproduz documentos da Graphisoft.");
+                    ui.separator();
+                    egui::CollapsingHeader::new("01 · Câmeras e seleção").default_open(true)
+                        .show(ui,|ui|{
+                            ui.label("Escolha Ortogonal, Perspectiva ou Dois pontos na barra superior.");
+                            ui.label("Órbita: Shift+botão do meio, botão direito, ou O + arraste esquerdo.");
+                            ui.label("Pan: arraste com o botão do meio. Zoom: roda.");
+                            ui.label("Seleção da esquerda à direita exige inclusão total; sentido contrário seleciona cruzamentos.");
+                        });
+                    egui::CollapsingHeader::new("02 · Mapa do projeto").show(ui,|ui|{
+                        ui.label("Na aba Projeto crie níveis, cotas de pavimento, plantas, cortes, elevações e vistas 3D.");
+                        ui.label("Em cortes e elevações, configure a posição X/Y e a orientação no Mapa do Projeto.");
+                        ui.small("A geometria documental atual deriva de elementos prismáticos já armazenados.");
+                    });
+                    egui::CollapsingHeader::new("03 · Vistas salvas e estilos gráficos")
+                        .show(ui,|ui|{
+                            ui.label("Selecione um ponto de vista, defina a câmera e clique Salvar vista.");
+                            ui.label("Configure escala 1:N, espessura de linha, aparência, hachura, cotas e ocultação experimental de arestas por vista.");
+                            ui.label("Para cotas, o valor vem de geometria existente; não é texto digitado na prancha.");
+                        });
+                    egui::CollapsingHeader::new("04 · Pranchas e impressão em escala")
+                        .show(ui,|ui|{
+                            ui.label("Na aba Vistas/Tabelas crie uma prancha A3, selecione uma vista e associe-a.");
+                            ui.label("As plantas/cortes/elevações usam a escala 1:N na exportação; se não couberem no quadro, a publicação será recusada.");
+                            ui.label("Vistas 3D recebem etiqueta SEM ESCALA e são ajustadas ao quadro.");
+                            ui.label("Use Pré-visualizar prancha para conferir proporções, hachuras e cotas.");
+                        });
+                    egui::CollapsingHeader::new("05 · Conjuntos Publicadores").show(ui,|ui|{
+                        ui.label("Crie um conjunto, vincule vistas, tabelas ou pranchas e selecione o diretório de saída.");
+                        ui.label("O exportador gera PDF vetorial para pranchas, CSV para tabelas e JSON para definições de vistas.");
+                    });
+                    egui::CollapsingHeader::new("06 · Informações do projeto").show(ui,|ui|{
+                        ui.label("Arquivo → Informações do Projeto para código, cliente, endereço, responsável, fase e revisão.");
+                        ui.label("Salve o arquivo do projeto para preservar estes dados, vistas e pranchas.");
+                    });
+                    ui.separator();
+                    ui.strong("Limitações desta etapa");
+                    ui.label("Sem kernel CAD B-Rep, sem linework exato para geometria complexa, sem padrão ABNT completo.");
+                    ui.label("A ocultação de linhas é aproximada para sólidos prismáticos; não é compatível com desenhos executivos.");
+                    ui.label("Nenhuma ferramenta provisória de parede, janela ou piso foi restaurada.");
+                });
+            });
+    }
+
     fn top_bar(&mut self, root:&mut egui::Ui) {
         egui::Panel::top("main_menus").show(root, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -716,6 +770,12 @@ impl StudioApp {
                     }
                 });
                 if ui.button("Salvar vista").clicked() { self.capture_saved_view(); }
+                ui.menu_button("Ajuda", |ui| {
+                    if ui.button("Guia de trabalho CIVIL CRAFT...").clicked() {
+                        self.help_open=true;
+                        ui.close();
+                    }
+                });
                 ui.separator();
                 ui.label("Câmera");
                 let camera = &mut self.project.workspace.camera;
@@ -1071,6 +1131,7 @@ impl eframe::App for StudioApp {
             else {self.draw_viewport(ui)}
         });
         self.project_info_window(&ctx);
+        self.help_window(&ctx);
     }
 }
 
