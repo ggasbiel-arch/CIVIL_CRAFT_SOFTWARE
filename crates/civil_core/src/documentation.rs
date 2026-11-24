@@ -2,7 +2,7 @@
 //! This is NOT a general CAD B-Rep, hidden-line engine, or BIM authoring tool.
 use serde::{Deserialize, Serialize};
 use crate::{Element, Project};
-use crate::navigation::{Viewpoint, ViewpointKind};
+use crate::navigation::{SavedView, Viewpoint, ViewpointKind};
 
 pub type Point2 = [f64; 2];
 pub type Point3 = [f64; 3];
@@ -239,11 +239,33 @@ fn pdf_line(cmd:&mut String,x1:f64,y1:f64,x2:f64,y2:f64){
     cmd.push_str(&format!("{x1:.3} {y1:.3} m {x2:.3} {y2:.3} l S\n"));
 }
 
+/// Resolve a saved view against live model data.
+/// 3D views use the saved camera snapshot, other views use their source viewpoint
+/// and its live cutting position. Linework is deliberately simplified.
+pub fn render_saved_view(project:&Project,saved:&SavedView)->Result<VectorDrawing,String>{
+    let viewpoint=project.workspace.viewpoints.iter()
+        .find(|v|v.id==saved.viewpoint_id)
+        .ok_or("Ponto de vista salvo não encontrado")?;
+    if viewpoint.kind!=ViewpointKind::ThreeD {
+        return Ok(render_viewpoint(project,viewpoint));
+    }
+    let mut drawing=VectorDrawing{title:saved.title.clone(),lines:Vec::new()};
+    for edge in model_wireframe(project) {
+        let a=saved.camera.project(edge.start,1000.0,1000.0);
+        let b=saved.camera.project(edge.end,1000.0,1000.0);
+        if let (Some(a),Some(b))=(a,b) {
+            // Viewport pixel Y points down; drawing coordinates point up.
+            drawing.edge([a[0],-a[1]],[b[0],-b[1]],&edge.element_id);
+        }
+    }
+    Ok(drawing)
+}
+
 /// Export a linked sheet on ISO-style A3 paper as a simple vector PDF.
 ///
 /// Exports existing BIM records (currently legacy walls and slabs) dynamically
 /// through the saved viewpoint ID. Fit-to-frame is used, NOT print scale 1:N.
-/// Limited to 2D plans/sections/elevations; no hatches, occlusion, fonts embedding or PDF/A.
+/// Supports projected 3D wireframe and 2D plans/sections/elevations; no hatches, occlusion, font embedding or PDF/A.
 pub fn export_sheet_pdf(project:&Project,sheet:&Sheet)->Result<Vec<u8>,String>{
     project.validate()?;
     sheet.validate()?;
@@ -269,13 +291,7 @@ pub fn export_sheet_pdf(project:&Project,sheet:&Sheet)->Result<Vec<u8>,String>{
         let saved=project.workspace.saved_views.iter()
             .find(|v|v.id==placement.saved_view_id)
             .ok_or("Vista vinculada à prancha não encontrada")?;
-        let vp=project.workspace.viewpoints.iter()
-            .find(|v|v.id==saved.viewpoint_id)
-            .ok_or("Ponto de vista vinculado não encontrado")?;
-        if vp.kind==ViewpointKind::ThreeD {
-            return Err("Publicação PDF de vista 3D ainda não implementada".into());
-        }
-        let drawing=render_viewpoint(project,vp);
+        let drawing=render_saved_view(project,saved)?;
         let left=placement.x_mm*PT_PER_MM;
         let top=paper_h-placement.y_mm*PT_PER_MM;
         let width=placement.width_mm*PT_PER_MM;
@@ -402,6 +418,25 @@ mod tests {
         let text=String::from_utf8(pdf).unwrap();
         assert!(text.contains("xref\n0 6\n"));
         assert!(text.contains("Planta terreo"));
+    }
+
+    #[test]
+    fn saved_3d_camera_produces_pdf_wireframe() {
+        let mut project=project_with_legacy_data();
+        let source=project.workspace.viewpoints.iter()
+            .find(|v|v.kind==ViewpointKind::ThreeD).unwrap().id.clone();
+        let saved=project.workspace.save_view(&source,"3D perspectiva".into(),Camera::default()).unwrap();
+        let drawing=render_saved_view(&project,project.workspace.saved_views.iter()
+            .find(|v|v.id==saved).unwrap()).unwrap();
+        assert!(!drawing.lines.is_empty());
+        let mut sheet=Sheet::a3_landscape("s3".into(),"A-03".into(),"Perspectiva".into());
+        sheet.placements.push(SheetPlacement {
+            id:"p3".into(),saved_view_id:saved,x_mm:20.0,y_mm:24.0,
+            width_mm:320.0,height_mm:200.0,
+        });
+        project.workspace.sheets.push(sheet.clone());
+        let pdf=export_sheet_pdf(&project,&sheet).unwrap();
+        assert!(String::from_utf8_lossy(&pdf).contains("3D perspectiva"));
     }
 
     #[test]
