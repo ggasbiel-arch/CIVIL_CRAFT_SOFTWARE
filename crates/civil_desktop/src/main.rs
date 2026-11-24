@@ -1,4 +1,5 @@
 use civil_core::{Level, Project};
+use civil_core::documentation::{self, Sheet, SheetPlacement};
 use civil_core::navigation::{
     Camera, ProjectionMode, PublishFormat, PublishItem, PublishSource, PublisherSet, SavedView,
     Schedule, ScheduleKind, ScreenBounds, ViewpointKind, Workspace, select_projected,
@@ -20,6 +21,10 @@ struct StudioApp {
     active_viewpoint: String,
     selected_view: String,
     selected_schedule: String,
+    selected_sheet: String,
+    sheet_name: String,
+    sheet_number: String,
+    preview_sheet: bool,
     active_publisher: String,
     selected_markers: Vec<String>,
     drag_start: Option<Pos2>,
@@ -52,6 +57,10 @@ impl Default for StudioApp {
             active_viewpoint,
             selected_view: String::new(),
             selected_schedule: String::new(),
+            selected_sheet: String::new(),
+            sheet_name: "Prancha de arquitetura".into(),
+            sheet_number: "A-01".into(),
+            preview_sheet: false,
             active_publisher: String::new(),
             selected_markers: Vec::new(),
             drag_start: None, drag_end: None,
@@ -79,6 +88,8 @@ impl StudioApp {
         self.selected_markers.clear();
         self.selected_view.clear();
         self.selected_schedule.clear();
+        self.selected_sheet.clear();
+        self.preview_sheet = false;
         self.project = project;
     }
 
@@ -167,6 +178,7 @@ impl StudioApp {
     fn activate_viewpoint(&mut self, id: &str) {
         if let Some(item) = self.project.workspace.viewpoints.iter().find(|v|v.id == id) {
             self.active_viewpoint = id.to_owned();
+            self.preview_sheet = false;
             self.project.workspace.camera = item.camera.clone();
             if let Some(level) = &item.level_id { self.active_level = level.clone(); }
             self.status = format!("Ponto de vista: {}", item.title);
@@ -196,6 +208,7 @@ impl StudioApp {
             self.project.workspace.camera = view.camera.clone();
             self.active_viewpoint = view.viewpoint_id.clone();
             self.selected_view = id.into();
+            self.preview_sheet = false;
             self.status = format!("Cena restaurada: {}", view.title);
         }
     }
@@ -209,6 +222,82 @@ impl StudioApp {
         });
         self.selected_schedule = id;
         self.status = format!("Tabela criada: {title}");
+    }
+
+    fn add_sheet(&mut self) {
+        let title = self.sheet_name.trim();
+        let number = self.sheet_number.trim();
+        if title.is_empty() || number.is_empty() {
+            self.status = "Informe nome e número da prancha".into();
+            return;
+        }
+        let id = self.project.workspace.allocate_id("sheet");
+        self.project.workspace.sheets.push(Sheet::a3_landscape(
+            id.clone(), number.to_owned(), title.to_owned(),
+        ));
+        self.selected_sheet = id;
+        self.preview_sheet = true;
+        self.status = "Prancha A3 criada. Adicione uma vista salva para preencher.".into();
+    }
+
+    fn add_view_to_sheet(&mut self) {
+        let view_id = self.selected_view.clone();
+        let Some(saved) = self.project.workspace.saved_views.iter()
+            .find(|v|v.id == view_id) else {
+            self.status = "Selecione primeiro uma vista salva".into();
+            return;
+        };
+        let id = self.project.workspace.allocate_id("placement");
+        let Some(sheet) = self.project.workspace.sheets.iter_mut()
+            .find(|s|s.id == self.selected_sheet) else {
+            self.status = "Crie ou selecione uma prancha".into();
+            return;
+        };
+        let count = sheet.placements.len();
+        if count >= 4 {
+            self.status = "Limite inicial: quatro vistas por prancha A3".into();
+            return;
+        }
+        let frame = SheetPlacement {
+            id, saved_view_id:view_id,
+            x_mm: 18.0 + (count%2) as f64 * 190.0,
+            y_mm: 22.0 + (count/2) as f64 * 110.0,
+            width_mm: 178.0,
+            height_mm: 102.0,
+        };
+        if let Err(err) = sheet.validate() {
+            self.status = format!("Prancha inválida: {err}");
+            return;
+        }
+        sheet.placements.push(frame);
+        self.preview_sheet = true;
+        self.status = "Vista vinculada à prancha. Prévia associativa atualizada.".into();
+    }
+
+    fn export_selected_sheet(&mut self) {
+        let Some(sheet) = self.project.workspace.sheets.iter()
+            .find(|s|s.id == self.selected_sheet) else {
+            self.status = "Selecione uma prancha".into();
+            return;
+        };
+        match documentation::export_sheet_pdf(&self.project,sheet) {
+            Ok(bytes) => {
+                let dir = PathBuf::from(self.publisher_dir.trim());
+                if let Err(err) = fs::create_dir_all(&dir) {
+                    self.status = format!("Erro ao criar diretório: {err}");
+                    return;
+                }
+                let safe_name: String = sheet.number.chars().map(|ch|
+                    if ch.is_ascii_alphanumeric() || ch=='-' || ch=='_' {ch} else {'_'}
+                ).collect();
+                let path = dir.join(format!("Prancha_{safe_name}.pdf"));
+                match fs::write(&path,bytes) {
+                    Ok(()) => self.status=format!("PDF vetorial exportado: {}",path.display()),
+                    Err(err)=>self.status=format!("Erro ao exportar PDF: {err}"),
+                }
+            }
+            Err(err)=>self.status=format!("Falha ao publicar prancha: {err}"),
+        }
     }
 
     fn add_publisher(&mut self) {
@@ -226,11 +315,14 @@ impl StudioApp {
         let source_id = match source {
             PublishSource::SavedView => self.selected_view.clone(),
             PublishSource::Schedule => self.selected_schedule.clone(),
+            PublishSource::Sheet => self.selected_sheet.clone(),
         };
         let exists = match source {
             PublishSource::SavedView => self.project.workspace.saved_views.iter()
                 .any(|v| v.id == source_id),
             PublishSource::Schedule => self.project.workspace.schedules.iter()
+                .any(|v| v.id == source_id),
+            PublishSource::Sheet => self.project.workspace.sheets.iter()
                 .any(|v| v.id == source_id),
         };
         if !exists {
@@ -243,9 +335,11 @@ impl StudioApp {
         if let Some(set) = set {
             set.items.push(PublishItem {
                 id, source, source_id,
-                format: if source == PublishSource::SavedView {
-                    PublishFormat::Json
-                } else { PublishFormat::Csv },
+                format: match source {
+                    PublishSource::SavedView=>PublishFormat::Json,
+                    PublishSource::Schedule=>PublishFormat::Csv,
+                    PublishSource::Sheet=>PublishFormat::Pdf,
+                },
             });
             self.status = "Item vinculado ao conjunto publicador".into();
         } else {
@@ -271,14 +365,14 @@ impl StudioApp {
         }
         let mut count = 0;
         for item in &set.items {
-            let output: Result<(String, String), String> = match item.source {
+            let output: Result<(String, Vec<u8>), String> = match item.source {
                 PublishSource::SavedView => {
                     self.project.workspace.saved_views.iter()
                         .find(|v|v.id == item.source_id)
                         .ok_or("Vista inexistente".to_owned())
                         .and_then(|v| {
                             serde_json::to_string_pretty(v)
-                                .map(|data|(String::from("json"), data))
+                                .map(|data|(String::from("json"), data.into_bytes()))
                                 .map_err(|err|err.to_string())
                         })
                 }
@@ -286,8 +380,13 @@ impl StudioApp {
                     self.project.workspace.schedules.iter()
                         .find(|v|v.id == item.source_id)
                         .ok_or("Tabela inexistente".to_owned())
-                        .map(|s| (String::from("csv"), schedule_csv(&self.project, s.kind)))
+                        .map(|s| (String::from("csv"), schedule_csv(&self.project, s.kind).into_bytes()))
                 }
+                PublishSource::Sheet => self.project.workspace.sheets.iter()
+                    .find(|s|s.id==item.source_id)
+                    .ok_or("Prancha não encontrada".to_owned())
+                    .and_then(|s| documentation::export_sheet_pdf(&self.project,s)
+                        .map(|pdf|("pdf".to_owned(),pdf))),
             };
             match output {
                 Ok((ext, data)) => {
@@ -349,6 +448,23 @@ impl StudioApp {
                 });
             }
             ui.separator();
+            if let Some(view) = self.project.workspace.viewpoints.iter_mut()
+                .find(|v|v.id==self.active_viewpoint) {
+                if matches!(view.kind, ViewpointKind::Section|ViewpointKind::Elevation) {
+                    ui.separator();
+                    ui.label("Plano de corte / direção de elevação");
+                    ui.horizontal(|ui| {
+                        ui.label("X (m)");
+                        ui.add(egui::DragValue::new(&mut view.marker[0]).speed(0.1));
+                        ui.label("Y (m)");
+                        ui.add(egui::DragValue::new(&mut view.marker[1]).speed(0.1));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Orientação (°)");
+                        ui.add(egui::DragValue::new(&mut view.camera.yaw_deg).speed(1.0));
+                    });
+                }
+            }
             ui.text_edit_singleline(&mut self.viewpoint_name);
             ui.horizontal_wrapped(|ui| {
                 if ui.button("+ 3D").clicked() { self.add_viewpoint(ViewpointKind::ThreeD); }
@@ -359,7 +475,7 @@ impl StudioApp {
             });
         });
         ui.separator();
-        ui.small("Cortes e elevações armazenam referências; geração de desenhos depende do futuro kernel BIM.");
+        ui.small("Cortes, elevações e plantas geram linhas dos elementos gravados. Ainda sem ocultação de arestas.");
     }
 
     fn saved_views_map(&mut self, ui: &mut egui::Ui) {
@@ -417,6 +533,45 @@ impl StudioApp {
             ui.strong(format!("Prévia: {}",table.title));
             for line in schedule_csv(&self.project,table.kind).lines().take(9) { ui.small(line); }
         }
+        self.sheet_map(ui);
+    }
+
+    fn sheet_map(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        egui::CollapsingHeader::new("Pranchas / Layouts").default_open(true).show(ui, |ui| {
+            ui.label("Nova prancha (A3 paisagem)");
+            ui.text_edit_singleline(&mut self.sheet_number);
+            ui.text_edit_singleline(&mut self.sheet_name);
+            if ui.button("+ Criar prancha").clicked() { self.add_sheet(); }
+            let sheets: Vec<_> = self.project.workspace.sheets.iter()
+                .map(|s|(s.id.clone(),s.number.clone(),s.title.clone())).collect();
+            for (id,number,title) in sheets {
+                if ui.selectable_label(self.selected_sheet==id,
+                    format!("{number} · {title}")).clicked() {
+                    self.selected_sheet=id;
+                    self.preview_sheet=true;
+                }
+            }
+            if !self.selected_sheet.is_empty() {
+                if let Some(sheet)=self.project.workspace.sheets.iter()
+                    .find(|s|s.id==self.selected_sheet) {
+                    ui.label(format!("{} vista(s) vinculada(s)",sheet.placements.len()));
+                    for place in &sheet.placements {
+                        if let Some(view)=self.project.workspace.saved_views.iter()
+                            .find(|v|v.id==place.saved_view_id) {
+                            ui.small(format!("• {}",view.title));
+                        }
+                    }
+                }
+                if ui.button("Adicionar vista selecionada à prancha").clicked() {
+                    self.add_view_to_sheet();
+                }
+                if ui.button("Pré-visualizar prancha").clicked() { self.preview_sheet=true; }
+                if ui.button("Exportar prancha PDF").clicked() {
+                    self.export_selected_sheet();
+                }
+            }
+        });
     }
 
     fn publisher_map(&mut self, ui: &mut egui::Ui) {
@@ -439,6 +594,9 @@ impl StudioApp {
         if ui.button("Adicionar tabela selecionada").clicked() {
             self.append_publisher_item(PublishSource::Schedule);
         }
+        if ui.button("Adicionar prancha selecionada").clicked() {
+            self.append_publisher_item(PublishSource::Sheet);
+        }
         if let Some(set) = self.project.workspace.publisher_sets.iter()
             .find(|s|s.id==self.active_publisher) {
             ui.strong(format!("Itens de {}",set.title));
@@ -446,6 +604,7 @@ impl StudioApp {
                 let label = match item.source {
                     PublishSource::SavedView=>"Vista (JSON)",
                     PublishSource::Schedule=>"Tabela (CSV)",
+                    PublishSource::Sheet=>"Prancha (PDF)",
                 };
                 ui.label(format!("{} · {}",label,item.source_id));
             }
@@ -454,7 +613,7 @@ impl StudioApp {
         ui.label("Diretório de publicação");
         ui.text_edit_singleline(&mut self.publisher_dir);
         if ui.button("Publicar conjunto").clicked() { self.publish_active_set(); }
-        ui.small("Exporta definições reais de vistas em JSON e tabelas em CSV. PDF/IFC e pranchas virão com o motor de documentação.");
+        ui.small("Exporta vistas JSON, tabelas CSV e pranchas com desenhos 2D/3D vetoriais em PDF. IFC e documentação executiva ainda pendentes.");
     }
 
     fn project_info_window(&mut self, ctx: &egui::Context) {
@@ -560,6 +719,66 @@ impl StudioApp {
         });
     }
 
+    fn draw_sheet_preview(&mut self, ui: &mut egui::Ui) {
+        let Some(sheet)=self.project.workspace.sheets.iter()
+            .find(|s|s.id==self.selected_sheet) else {
+            ui.label("Selecione uma prancha no mapa Vistas/Tabelas");
+            return;
+        };
+        ui.heading(format!("Prancha {} — {}",sheet.number,sheet.title));
+        ui.small("Pré-visualização vetorial dos elementos armazenados; dimensões do papel em mm.");
+        let space=ui.available_size();
+        let scale=(space.x/sheet.width_mm as f32)
+            .min((space.y-14.0).max(30.0)/sheet.height_mm as f32).max(0.1);
+        let target=egui::vec2(sheet.width_mm as f32*scale,
+            sheet.height_mm as f32*scale);
+        let (paper,_response)=ui.allocate_exact_size(target,Sense::hover());
+        let painter=ui.painter().with_clip_rect(paper);
+        painter.rect_filled(paper,0.0,Color32::WHITE);
+        painter.rect_stroke(paper,0.0,Stroke::new(1.0,Color32::DARK_GRAY),
+            egui::StrokeKind::Inside);
+        let title_y=paper.bottom()-35.0*scale;
+        painter.line_segment([Pos2::new(paper.left()+12.0*scale,title_y),
+                Pos2::new(paper.right()-12.0*scale,title_y)],
+            Stroke::new(1.0,Color32::BLACK));
+        painter.text(Pos2::new(paper.left()+18.0*scale,paper.bottom()-24.0*scale),
+            egui::Align2::LEFT_TOP,format!("{} — {}",sheet.number,self.project.name),
+            egui::FontId::proportional(12.0),Color32::BLACK);
+        for place in &sheet.placements {
+            let bounds=Rect::from_min_size(
+                Pos2::new(paper.left()+place.x_mm as f32*scale,
+                    paper.top()+place.y_mm as f32*scale),
+                egui::vec2(place.width_mm as f32*scale,
+                    place.height_mm as f32*scale),
+            );
+            painter.rect_stroke(bounds,0.0,Stroke::new(1.0,Color32::GRAY),
+                egui::StrokeKind::Inside);
+            let Some(saved)=self.project.workspace.saved_views.iter()
+                .find(|v|v.id==place.saved_view_id) else {continue;};
+            painter.text(bounds.left_top()+egui::vec2(5.0,4.0),
+                egui::Align2::LEFT_TOP,&saved.title,
+                egui::FontId::proportional(10.0),Color32::DARK_GRAY);
+            let Ok(draw)=documentation::render_saved_view(&self.project,saved) else {continue;};
+            if let Some((min,max))=draw.bounds() {
+                let w=(max[0]-min[0]).max(0.05);
+                let h=(max[1]-min[1]).max(0.05);
+                let factor=((bounds.width()-16.0)/w as f32)
+                    .min((bounds.height()-32.0)/h as f32);
+                let center=Pos2::new(bounds.center().x,bounds.center().y+7.0);
+                let cx=(min[0]+max[0])*0.5;
+                let cy=(min[1]+max[1])*0.5;
+                for line in &draw.lines {
+                    let project=|p:[f64;2]| Pos2::new(
+                        center.x+((p[0]-cx) as f32)*factor,
+                        center.y-((p[1]-cy) as f32)*factor,
+                    );
+                    painter.line_segment([project(line.start),project(line.end)],
+                        Stroke::new(1.0,Color32::from_rgb(38,53,70)));
+                }
+            }
+        }
+    }
+
     fn draw_viewport(&mut self, ui: &mut egui::Ui) {
         let size = ui.available_size().max(Vec2::new(100.0,100.0));
         let (rect, response) = ui.allocate_exact_size(size,Sense::click_and_drag());
@@ -596,6 +815,36 @@ impl StudioApp {
             }
         }
 
+        // Read-only model linework is derived from stored BIM records, not demo tools.
+        if let Some(active) = self.project.workspace.viewpoints.iter()
+            .find(|v|v.id == self.active_viewpoint) {
+            if active.kind == ViewpointKind::ThreeD {
+                for edge in documentation::model_wireframe(&self.project) {
+                    if let (Some(a),Some(b))=(camera.project(edge.start,w,h),
+                        camera.project(edge.end,w,h)) {
+                        painter.line_segment([to_pos(a),to_pos(b)],
+                            Stroke::new(1.4,Color32::from_rgb(225,226,231)));
+                    }
+                }
+            } else {
+                let drawing=documentation::render_viewpoint(&self.project,active);
+                if let Some((minimum,maximum))=drawing.bounds() {
+                    let width=(maximum[0]-minimum[0]).max(0.05);
+                    let height=(maximum[1]-minimum[1]).max(0.05);
+                    let factor=((w-100.0)/width).min((h-100.0)/height);
+                    let center=[(minimum[0]+maximum[0])*0.5,
+                        (minimum[1]+maximum[1])*0.5];
+                    for edge in &drawing.lines {
+                        let to_screen=|p:[f64;2]| Pos2::new(
+                            rect.center().x+((p[0]-center[0])*factor) as f32,
+                            rect.center().y-((p[1]-center[1])*factor) as f32);
+                        painter.line_segment([to_screen(edge.start),to_screen(edge.end)],
+                            Stroke::new(1.6,Color32::from_rgb(221,223,230)));
+                    }
+                }
+            }
+        }
+
         // Viewpoint markers are real navigator entities, not placeholder walls or floors.
         let mut marker_bounds: Vec<(String,ScreenBounds)> = Vec::new();
         for view in &self.project.workspace.viewpoints {
@@ -618,10 +867,10 @@ impl StudioApp {
         if response.dragged_by(PointerButton::Secondary)
             || (response.dragged_by(PointerButton::Middle) && mods.shift)
             || (response.dragged_by(PointerButton::Primary) && self.orbit_tool) {
-            let delta=response.drag_delta();
+            let delta=ui.input(|i|i.pointer.delta());
             self.project.workspace.camera.orbit(delta.x as f64,delta.y as f64);
         } else if response.dragged_by(PointerButton::Middle) {
-            let delta=response.drag_delta();
+            let delta=ui.input(|i|i.pointer.delta());
             self.project.workspace.camera.pan(delta.x as f64,delta.y as f64,h);
         }
 
@@ -716,7 +965,7 @@ fn schedule_csv(project:&Project,kind:ScheduleKind)->String {
 impl eframe::App for StudioApp {
     fn ui(&mut self,root:&mut egui::Ui,_frame:&mut eframe::Frame) {
         let ctx = root.ctx().clone();
-        if ctx.input(|i|i.key_pressed(egui::Key::O)) {
+        if !ctx.egui_wants_keyboard_input() && ctx.input(|i|i.key_pressed(egui::Key::O)) {
             self.orbit_tool=!self.orbit_tool;
         }
         self.top_bar(root);
@@ -729,7 +978,10 @@ impl eframe::App for StudioApp {
                 ui.label(&self.status);
             });
         });
-        egui::CentralPanel::default().show(root,|ui|self.draw_viewport(ui));
+        egui::CentralPanel::default().show(root,|ui| {
+            if self.preview_sheet {self.draw_sheet_preview(ui)}
+            else {self.draw_viewport(ui)}
+        });
         self.project_info_window(&ctx);
     }
 }

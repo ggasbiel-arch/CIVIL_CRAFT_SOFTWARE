@@ -1,6 +1,7 @@
 //! Projeto 2 — núcleo paramétrico inicial (não contém um kernel B-Rep).
 pub mod components;
 pub mod navigation;
+pub mod documentation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
