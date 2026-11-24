@@ -7,7 +7,7 @@
 3. **Cortes**: interseção de uma reta/semiplano vertical com a seção XY dos prismas, gerando retângulos no plano horizontal X / vertical Z. A posição da linha de corte e a orientação são configuráveis no Mapa do Projeto (X, Y e ângulo).
 4. **Elevações**: projeção do wireframe geométrico no plano de elevação, com altura real Z; **sem remoção de arestas ocultas**, algo que requer o futuro mecanismo de visibilidade.
 5. **Vistas salvas**: o vínculo `saved_view.viewpoint_id` é resolvido em tempo de visualização e publicação. Uma modificação no modelo reflete nas vistas vinculadas e no PDF exportado.
-6. **Pranchas associativas**: coleção `workspace.sheets` no projeto JSON; formato inicial A3 paisagem (420 × 297 mm), numeração, nome, até quatro quadros vinculados a `saved_view_id`, pré-visualização e exportação.
+6. **Pranchas associativas (incluindo wireframe 3D)**: coleção `workspace.sheets` no projeto JSON; formato inicial A3 paisagem (420 × 297 mm), numeração, nome, até quatro quadros vinculados a `saved_view_id`, pré-visualização e exportação.
 7. **Publicador**: aceita publicações de folhas PDF, além de vistas JSON e tabelas CSV. Os documentos são exportados para a pasta configurada.
 
 ## Como testar na interface
@@ -25,8 +25,8 @@ O arquivo `samples/projeto_vazio.bim.json` não tem paredes nem lajes — contin
 
 ## Limitações importantes
 
-- O sistema ainda **não implementa B-Rep, geometria CSG, paredes BIM complexas, famílias paramétricas reais ou ferramentas de desenho**.
-- A vista 3D pode mostrar arestas de elementos legados, mas o PDF inicial aceita apenas planta, corte, elevação e detalhe; PDF de perspectivas 3D não é suportado.
+- O sistema ainda **não implementa B-Rep, geometria CSG, paredes BIM complexas, famílias paramétricas reais ou ferramentas de desenho**. Há apenas projeção das geometrias legadas existentes.
+- A vista 3D pode ser incluída na prancha e PDF como **projeção vetorial wireframe** da câmera salva. Não há cálculo de visibilidade, ocultação de superfícies, sombreamento ou rasterização realista.
 - Cortes: geração geométrica de perfil, **sem profundidade de vista, prioridades de material, hatch, representação de camadas ou substituições gráficas**.
 - Elevações: arestas projetadas, **sem ocultação de arestas**.
 - Os quadros na prancha usam **ajuste ao retângulo disponível** (fit-to-frame); a etiqueta de escala é metadado, **não garante escala física 1:N**. É proibido usar esta saída preliminar como desenho executivo para construção.
