@@ -11,7 +11,7 @@ Unificar, em arquitetura original, os seguintes paradigmas:
 - interoperabilidade com componentes SketchUp SKP, famílias Revit RFA, objetos Archicad GSM/GDL e modelos estruturais Eberick/IFC, respeitando as capacidades de SDKs e licenças;
 - documentação, tabelas e no futuro análise estrutural especializada e validada.
 
-**Não** copiar código, marcas, interfaces idênticas, assets ou algoritmos proprietários de softwares de terceiros. Importar dados autorizados, não burlar criptografia, licenças ou formatos protegidos.
+**Não** copiar integralmente manuais, guias, textos, código, marcas, interfaces idênticas, assets ou algoritmos proprietários de softwares de terceiros. Criar guias originais baseados em funcionalidade pública, respeitando direitos autorais. Importar dados autorizados, não burlar criptografia, licenças ou formatos protegidos.
 
 ## Stack e divisão de responsabilidades
 - **Rust — aproximadamente 75% do desenvolvimento de lógica e código-fonte de produto**: domínio geométrico, sistema BIM, parâmetros, avaliação de grafos, persistência, importadores, UI desktop, operações pesadas e testes.
@@ -20,7 +20,7 @@ Unificar, em arquitetura original, os seguintes paradigmas:
 - Evitar dependências pagas sem aprovação. Integrar kernel CAD 3D robusto apenas em fase posterior, mediante avaliação documentada (B-Rep, tolerâncias, licenças, interoperabilidade, segurança e performance).
 
 ## Estado real do código
-`crates/civil_core` preserva paredes e lajes como tipos legados para compatibilidade de arquivos. `crates/civil_core/src/components.rs` contém definições/instâncias e um grafo **numérico**, sem geração de sólidos. `crates/civil_desktop` é uma casca neutra de interface, sem ferramentas geométricas de demonstração. `python/` tem utilitários. Ainda não existem importadores reais, editor gráfico de nós, kernel B-Rep, exportação IFC nem cálculo estrutural validado.
+`crates/civil_core` preserva paredes e lajes como tipos legados para compatibilidade de arquivos. `crates/civil_core/src/components.rs` contém definições/instâncias e um grafo **numérico**, sem geração de sólidos. `crates/civil_desktop` contém câmeras, gestão de vistas, pranchas e pré-visualização documental, sem ferramentas temporárias de criação arquitetônica. `crates/civil_core/src/documentation.rs` deriva geometrias prismáticas legadas, e `technical.rs` adiciona escalas/estilos/hachuras/cotas e ocultação aproximada. `python/` tem utilitários. Ainda não existem importadores reais, editor gráfico de nós, kernel B-Rep, exportação IFC nem cálculo estrutural validado.
 
 ## Processo obrigatório de implementação
 1. Ler `README.md`, `docs/ARQUITETURA.md`, `docs/ROADMAP.md`, `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md` e este arquivo.
@@ -51,3 +51,9 @@ No fim, fornecer: arquivos modificados, resumo do que funciona, testes realmente
 ## Limpeza das ferramentas de teste — novembro/2026
 
 Não restaurar o desenho temporário de paredes, a visualização simplificada de paredes e pisos/lajes, os controles de espessura/altura da demonstração, o comando `add-wall` ou a casa piloto. Não havia ferramenta real de janela nesta base. Manter os dados legados somente para leitura de projetos antigos. Ferramentas BIM definitivas exigem geometria real, testes, persistência e edição associativa.
+
+## Documentação E3 e propriedade intelectual
+
+A referência funcional deve ser feita por [MATRIZ_FUNCIONAL_ARCHICAD_ORIGINAL.md](docs/MATRIZ_FUNCIONAL_ARCHICAD_ORIGINAL.md). O [GUIA_CIVIL_CRAFT_E3.md](docs/GUIA_CIVIL_CRAFT_E3.md) é texto original. Não copiar o manual do Archicad nem outros documentos protegidos, integralmente ou em grandes trechos. Implementar funcionalidades equivalentes com desenhos, algoritmos, interfaces e textos próprios.
+
+Nunca afirmar que o PDF E3 possui escala física quando estiver em perspectiva 3D (etiqueta SEM ESCALA), ou que a ocultação por amostragem é completa. Se a vista 2D ultrapassar seu quadro à escala 1:N, interromper exportação em vez de recalcular escala silenciosamente.
