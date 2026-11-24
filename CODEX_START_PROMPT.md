@@ -16,7 +16,7 @@ Software original que reúna:
 Meta arquitetural: cerca de **75% Rust / 25% Python**, não adulterar arquitetura apenas para atingir uma contagem exata. Rust domina engine, UI, BIM, grafos e persistência; Python dá scripting, ferramentas, plugins e testes. Não usar código, assets, algoritmos proprietários, bibliotecas não autorizadas, marcas ou interfaces idênticas dos programas citados.
 
 ## Contexto do starter
-Leia obrigatoriamente `AGENTS.md`, `README.md`, `docs/ARQUITETURA.md`, `docs/ROADMAP.md` e `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md`. Inspecione o workspace Cargo e os testes. Há `civil_core` (paredes, lajes, pavimentos e um grafo numérico em `components.rs`), `civil_desktop` (UI e planta 2D, vista isométrica conceitual), scripts Python e amostras. **O Rust nunca foi compilado no ambiente que gerou o starter**; teste antes de concluir.
+Leia obrigatoriamente `AGENTS.md`, `README.md`, `docs/ARQUITETURA.md`, `docs/ROADMAP.md` e `docs/INTEROPERABILIDADE_E_PARAMETRIZACAO.md`. Inspecione o workspace Cargo e os testes. Há `civil_core` (schema legado e grafo numérico em `components.rs`), `civil_desktop` (interface neutra 2D/3D), scripts Python e amostras. As ferramentas demonstrativas de parede/piso foram removidas; não as restaure. **O Rust nunca foi compilado no ambiente que gerou o starter**; teste antes de concluir.
 
 ## Sprint 1 — IMPLEMENTAR AGORA
 
@@ -57,3 +57,5 @@ Leia obrigatoriamente `AGENTS.md`, `README.md`, `docs/ARQUITETURA.md`, `docs/ROA
 - Criar commits limpos com mensagens objetivas, preferencialmente em branch `feat/bim-components-sprint1`, e entregar descrição de PR com resumo, arquivos, testes, limitações.
 
 **Comece agora pelo inventário do código, depois a compilação/testes e em seguida implemente o primeiro vertical slice completo. Não fique apenas elaborando sugestões: modifique os arquivos do repositório.**
+
+**Regra atualizada:** não reintroduzir `Project::example`, `add_wall`, `add_slab`, `add-wall` nem a cena ilustrativa da casa piloto. O exemplo de porta é apenas teste numérico do grafo paramétrico, sem ferramenta gráfica funcional.
