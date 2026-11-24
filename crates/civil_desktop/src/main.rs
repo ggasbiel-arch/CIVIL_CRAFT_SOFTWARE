@@ -1,5 +1,6 @@
 use civil_core::{Level, Project};
 use civil_core::documentation::{self, Sheet, SheetPlacement};
+use civil_core::technical::{self, PrintScale, GraphicPreset, HatchPattern};
 use civil_core::navigation::{
     Camera, ProjectionMode, PublishFormat, PublishItem, PublishSource, PublisherSet, SavedView,
     Schedule, ScheduleKind, ScreenBounds, ViewpointKind, Workspace, select_projected,
@@ -499,8 +500,41 @@ impl StudioApp {
             ui.label("Definições da vista");
             ui.label("Nome");
             ui.text_edit_singleline(&mut view.title);
-            ui.label("Escala");
+            ui.label("Escala física da vista (ex.: 1:50 ou 1:100)");
             ui.text_edit_singleline(&mut view.scale);
+            if let Err(err)=PrintScale::parse(&view.scale){
+                ui.colored_label(Color32::from_rgb(231,144,104),format!("Escala inválida: {err}"));
+            }
+            ui.separator();
+            ui.strong("Representação técnica");
+            egui::ComboBox::from_id_salt("graphic_preset")
+                .selected_text(view.graphics.preset.label())
+                .show_ui(ui,|ui|{
+                    for preset in [GraphicPreset::Technical,GraphicPreset::Monochrome,GraphicPreset::Conceptual]{
+                        ui.selectable_value(&mut view.graphics.preset,preset,preset.label());
+                    }
+                });
+            ui.horizontal(|ui|{
+                ui.label("Espessura da pena (mm)");
+                ui.add(egui::DragValue::new(&mut view.graphics.line_width_mm)
+                    .range(0.05..=2.0).speed(0.01));
+            });
+            egui::ComboBox::from_id_salt("hatch_preset")
+                .selected_text(view.graphics.hatch.label())
+                .show_ui(ui,|ui|{
+                    for hatch in [HatchPattern::None,HatchPattern::Diagonal,HatchPattern::Cross]{
+                        ui.selectable_value(&mut view.graphics.hatch,hatch,hatch.label());
+                    }
+                });
+            ui.horizontal(|ui|{
+                ui.label("Espaçamento de hachura (mm)");
+                ui.add(egui::DragValue::new(&mut view.graphics.hatch_spacing_mm)
+                    .range(0.3..=20.0).speed(0.1));
+            });
+            ui.checkbox(&mut view.graphics.auto_dimensions,"Cotas automáticas (medidas reais)");
+            ui.checkbox(&mut view.graphics.hide_occluded_edges,
+                "Ocultar arestas atrás dos elementos (experimental)");
+            ui.small("A ocultação é amostrada e vale para 3D/elevações de geometria prismática.");
             ui.label("Combinação de camadas");
             ui.text_edit_singleline(&mut view.layer_preset);
             ui.label("Observações");
@@ -758,23 +792,77 @@ impl StudioApp {
             painter.text(bounds.left_top()+egui::vec2(5.0,4.0),
                 egui::Align2::LEFT_TOP,&saved.title,
                 egui::FontId::proportional(10.0),Color32::DARK_GRAY);
-            let Ok(draw)=documentation::render_saved_view(&self.project,saved) else {continue;};
-            if let Some((min,max))=draw.bounds() {
-                let w=(max[0]-min[0]).max(0.05);
-                let h=(max[1]-min[1]).max(0.05);
-                let factor=((bounds.width()-16.0)/w as f32)
-                    .min((bounds.height()-32.0)/h as f32);
-                let center=Pos2::new(bounds.center().x,bounds.center().y+7.0);
-                let cx=(min[0]+max[0])*0.5;
-                let cy=(min[1]+max[1])*0.5;
-                for line in &draw.lines {
-                    let project=|p:[f64;2]| Pos2::new(
-                        center.x+((p[0]-cx) as f32)*factor,
-                        center.y-((p[1]-cy) as f32)*factor,
+            let Ok(draw)=technical::styled_view(&self.project,saved) else {continue;};
+            let Some((min,max))=draw.bounds() else {continue;};
+            let w=(max[0]-min[0]).max(0.05);
+            let h=(max[1]-min[1]).max(0.05);
+            let Some(vp)=self.project.workspace.viewpoints.iter()
+                .find(|v|v.id==saved.viewpoint_id) else {continue;};
+            let is3d=vp.kind==ViewpointKind::ThreeD;
+            let Ok(print_scale)=PrintScale::parse(&saved.scale) else {continue;};
+            let factor=if is3d {
+                ((bounds.width()-16.0)/w as f32)
+                    .min((bounds.height()-32.0)/h as f32)
+            }else{
+                // paper pixels per mm * drawing paper millimetres per model metre
+                let pixels_per_paper_mm=scale;
+                (print_scale.paper_mm_from_model_m(1.0) as f32)*pixels_per_paper_mm
+            };
+            let center=Pos2::new(bounds.center().x,bounds.center().y+7.0);
+            let cx=(min[0]+max[0])*0.5;
+            let cy=(min[1]+max[1])*0.5;
+            let model_to_screen=|p:[f64;2]| Pos2::new(
+                center.x+((p[0]-cx) as f32)*factor,
+                center.y-((p[1]-cy) as f32)*factor,
+            );
+            let drawing_painter=painter.with_clip_rect(bounds);
+            let color=match saved.graphics.preset {
+                GraphicPreset::Monochrome=>Color32::BLACK,
+                GraphicPreset::Technical=>Color32::from_rgb(
+                    saved.graphics.line_rgb[0],
+                    saved.graphics.line_rgb[1],
+                    saved.graphics.line_rgb[2]),
+                GraphicPreset::Conceptual=>Color32::from_rgb(40,92,135),
+            };
+            if vp.kind==ViewpointKind::Section {
+                let hatch_spacing_m=saved.graphics.hatch_spacing_mm
+                    *print_scale.denominator/1000.0;
+                let hatch=technical::section_hatches(&draw,
+                    saved.graphics.hatch,hatch_spacing_m);
+                for line in hatch.iter().take(3000) {
+                    drawing_painter.line_segment(
+                        [model_to_screen(line.start),model_to_screen(line.end)],
+                        Stroke::new(0.7,Color32::GRAY),
                     );
-                    painter.line_segment([project(line.start),project(line.end)],
-                        Stroke::new(1.0,Color32::from_rgb(38,53,70)));
                 }
+            }
+            for line in &draw.lines {
+                drawing_painter.line_segment(
+                    [model_to_screen(line.start),model_to_screen(line.end)],
+                    Stroke::new((saved.graphics.line_width_mm as f32*scale).max(0.6),color));
+            }
+            if !is3d && saved.graphics.auto_dimensions {
+                for dim in technical::derived_dimensions(&self.project,vp).iter().take(80) {
+                    let a=model_to_screen(dim.start);
+                    let b=model_to_screen(dim.end);
+                    let d=b-a;
+                    let norm=d.length().max(1.0);
+                    let offset=egui::vec2(d.y/norm,-d.x/norm)*6.0*scale;
+                    let da=a+offset;let db=b+offset;
+                    drawing_painter.line_segment([da,db],Stroke::new(0.8,Color32::BLACK));
+                    drawing_painter.line_segment([a,da],Stroke::new(0.7,Color32::DARK_GRAY));
+                    drawing_painter.line_segment([b,db],Stroke::new(0.7,Color32::DARK_GRAY));
+                    let mid=Pos2::new((da.x+db.x)*0.5,(da.y+db.y)*0.5);
+                    drawing_painter.text(mid,egui::Align2::CENTER_BOTTOM,dim.label(),
+                        egui::FontId::proportional(8.0),Color32::BLACK);
+                }
+            }
+            if !is3d && (w as f32*factor>bounds.width()-12.0
+                || h as f32*factor>bounds.height()-22.0) {
+                drawing_painter.text(bounds.left_bottom()-egui::vec2(-6.0,17.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    "A vista não cabe na escala selecionada",
+                    egui::FontId::proportional(9.0),Color32::from_rgb(190,52,42));
             }
         }
     }
