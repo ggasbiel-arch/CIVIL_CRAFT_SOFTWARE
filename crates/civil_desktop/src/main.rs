@@ -878,10 +878,10 @@ impl StudioApp {
         if response.dragged_by(PointerButton::Secondary)
             || (response.dragged_by(PointerButton::Middle) && mods.shift)
             || (response.dragged_by(PointerButton::Primary) && self.orbit_tool) {
-            let delta=response.drag_delta();
+            let delta=ui.input(|i|i.pointer.delta());
             self.project.workspace.camera.orbit(delta.x as f64,delta.y as f64);
         } else if response.dragged_by(PointerButton::Middle) {
-            let delta=response.drag_delta();
+            let delta=ui.input(|i|i.pointer.delta());
             self.project.workspace.camera.pan(delta.x as f64,delta.y as f64,h);
         }
 
@@ -976,7 +976,7 @@ fn schedule_csv(project:&Project,kind:ScheduleKind)->String {
 impl eframe::App for StudioApp {
     fn ui(&mut self,root:&mut egui::Ui,_frame:&mut eframe::Frame) {
         let ctx = root.ctx().clone();
-        if ctx.input(|i|i.key_pressed(egui::Key::O)) {
+        if !ctx.wants_keyboard_input() && ctx.input(|i|i.key_pressed(egui::Key::O)) {
             self.orbit_tool=!self.orbit_tool;
         }
         self.top_bar(root);
